@@ -1,0 +1,28 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.iml
+.idea/
+.vscode/
+coverage/
+
+# Plataformas generadas
+apps/*/windows/flutter/ephemeral/
+apps/*/android/.gradle/
+apps/*/android/local.properties
+apps/*/android/key.properties
+apps/*/ios/Pods/
+apps/*/ios/.symlinks/
+apps/*/ios/Flutter/ephemeral/
+apps/*/macos/Pods/
+apps/*/linux/flutter/ephemeral/
+
+# Sistema
+Thumbs.db
+.DS_Store
+*.log

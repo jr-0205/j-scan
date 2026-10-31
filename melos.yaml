@@ -1,0 +1,22 @@
+name: jscan
+
+packages:
+  - apps/*
+  - packages/*
+
+scripts:
+  analyze:
+    description: Analiza todos los paquetes y apps.
+    run: melos exec -- flutter analyze .
+  test:core:
+    description: Pruebas del paquete de protocolo/servidor.
+    run: melos exec --scope=jscan_core -- dart test
+  test:apps:
+    description: Pruebas de widgets de las apps.
+    run: melos exec --scope=desktop_app --scope=mobile_app -- flutter test
+  format:
+    description: Formatea el código.
+    run: melos exec -- dart format --set-exit-if-changed .
+  probe:
+    description: Busca PCs J-SCAN en la red y hace ping.
+    run: melos exec --scope=jscan_core -- dart run tool/probe.dart
