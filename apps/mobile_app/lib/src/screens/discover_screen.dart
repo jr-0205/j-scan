@@ -2,11 +2,38 @@ import 'package:flutter/material.dart';
 import 'package:jscan_core/jscan_core.dart';
 
 import '../discovery_controller.dart';
+import '../widgets/probe_result_view.dart';
+import 'pair_code_dialog.dart';
+import 'paired_servers_screen.dart';
+import 'qr_scan_screen.dart';
 
 class DiscoverScreen extends StatelessWidget {
   const DiscoverScreen({super.key, required this.controller});
 
   final DiscoveryController controller;
+
+  Future<void> _scanQr(BuildContext context) async {
+    final server = await QrScanScreen.open(context, controller: controller);
+    if (!context.mounted || server == null) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '${server.name} emparejada. A partir de ahora los mensajes van cifrados.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pasteCode(BuildContext context) async {
+    final server = await PairCodeDialog.show(
+      context,
+      controller: controller,
+    );
+    if (!context.mounted || server == null) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${server.name} emparejada')),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -14,6 +41,7 @@ class DiscoverScreen extends StatelessWidget {
       listenable: controller,
       builder: (context, _) {
         final scanning = controller.status == ScanStatus.scanning;
+        final paired = controller.pairedServers;
         return Scaffold(
           appBar: AppBar(
             title: const Row(
@@ -24,6 +52,18 @@ class DiscoverScreen extends StatelessWidget {
               ],
             ),
             actions: <Widget>[
+              IconButton(
+                tooltip: 'PCs emparejadas',
+                onPressed: () => PairedServersScreen.open(
+                  context,
+                  controller: controller,
+                ),
+                icon: Badge(
+                  isLabelVisible: paired.isNotEmpty,
+                  label: Text('${paired.length}'),
+                  child: const Icon(Icons.verified_user_outlined),
+                ),
+              ),
               IconButton(
                 tooltip: 'Buscar PCs',
                 onPressed: scanning ? null : () => controller.scan(),
@@ -47,28 +87,45 @@ class DiscoverScreen extends StatelessWidget {
                 const SizedBox(height: 12),
                 _StatusBar(controller: controller),
                 const SizedBox(height: 12),
-                if (controller.peers.isEmpty)
-                  _EmptyState(controller: controller)
-                else
-                  ...controller.peers.map(
-                    (peer) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: _PeerCard(
-                        peer: peer,
+                if (!controller.ready)
+                  const _PreparingCard()
+                else ...<Widget>[
+                  _PairingActionsCard(
+                    onScan: () => _scanQr(context),
+                    onPaste: () => _pasteCode(context),
+                  ),
+                  if (paired.isNotEmpty) ...<Widget>[
+                    const SizedBox(height: 12),
+                    _PairedSummaryCard(
+                      controller: controller,
+                      onOpen: () => PairedServersScreen.open(
+                        context,
                         controller: controller,
                       ),
                     ),
-                  ),
-                const SizedBox(height: 4),
-                OutlinedButton.icon(
-                  onPressed: () => _openManualDialog(context),
-                  icon: const Icon(Icons.keyboard),
-                  label: const Text('Conectar por IP manualmente'),
-                ),
+                  ],
+                  const SizedBox(height: 20),
+                  _PeersHeader(count: controller.peers.length),
+                  const SizedBox(height: 8),
+                  if (controller.peers.isEmpty)
+                    _EmptyState(controller: controller)
+                  else
+                    ...controller.peers.map(
+                      (peer) => Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _PeerCard(
+                          peer: peer,
+                          controller: controller,
+                          onPair: () => _scanQr(context),
+                        ),
+                      ),
+                    ),
+                ],
                 const SizedBox(height: 24),
                 Text(
-                  'Sprint 1 · conexión local sin internet. '
-                  'El QR y el cifrado llegan en el Sprint 2.',
+                  'Sprint 2 · emparejamiento por QR, autenticación X25519 y '
+                  'mensajes cifrados con ChaCha20-Poly1305. Un celular sin '
+                  'emparejar no puede enviar nada.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.outline,
@@ -79,13 +136,6 @@ class DiscoverScreen extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-
-  Future<void> _openManualDialog(BuildContext context) {
-    return showDialog<void>(
-      context: context,
-      builder: (context) => _ManualConnectDialog(controller: controller),
     );
   }
 }
@@ -115,12 +165,37 @@ class _IntroCard extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     'Abre J-SCAN en la PC y conecta el celular a la misma red. '
-                    'El descubrimiento usa mDNS; no hace falta internet.',
+                    'El descubrimiento usa mDNS y el emparejamiento se hace '
+                    'una sola vez por PC.',
                     style: theme.textTheme.bodySmall,
                   ),
                 ],
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PreparingCard extends StatelessWidget {
+  const _PreparingCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Card(
+      child: Padding(
+        padding: EdgeInsets.all(24),
+        child: Row(
+          children: <Widget>[
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            SizedBox(width: 12),
+            Expanded(child: Text('Preparando la identidad segura…')),
           ],
         ),
       ),
@@ -181,6 +256,130 @@ class _StatusBar extends StatelessWidget {
   }
 }
 
+class _PairingActionsCard extends StatelessWidget {
+  const _PairingActionsCard({
+    required this.onScan,
+    required this.onPaste,
+  });
+
+  final VoidCallback onScan;
+  final VoidCallback onPaste;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                const Icon(Icons.qr_code_2),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Emparejar con la PC',
+                    style: theme.textTheme.titleMedium,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'En la PC pulsa «Emparejar dispositivo». Escanea el QR o pega '
+              'el código; la PC te pedirá confirmación antes de autorizar '
+              'este celular.',
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: <Widget>[
+                FilledButton.icon(
+                  onPressed: onScan,
+                  icon: const Icon(Icons.qr_code_scanner),
+                  label: const Text('Escanear QR'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: onPaste,
+                  icon: const Icon(Icons.keyboard),
+                  label: const Text('Pegar código'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PairedSummaryCard extends StatelessWidget {
+  const _PairedSummaryCard({
+    required this.controller,
+    required this.onOpen,
+  });
+
+  final DiscoveryController controller;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final servers = controller.pairedServers;
+    return Card(
+      color: theme.colorScheme.secondaryContainer,
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        leading: Icon(
+          Icons.verified_user,
+          color: theme.colorScheme.onSecondaryContainer,
+        ),
+        title: Text(
+          '${servers.length} PC'
+          '${servers.length == 1 ? '' : 's'} emparejada'
+          '${servers.length == 1 ? '' : 's'}',
+          style: TextStyle(color: theme.colorScheme.onSecondaryContainer),
+        ),
+        subtitle: Text(
+          servers.map((server) => server.name).join(', '),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: theme.colorScheme.onSecondaryContainer),
+        ),
+        trailing: TextButton(
+          onPressed: onOpen,
+          child: const Text('Ver'),
+        ),
+      ),
+    );
+  }
+}
+
+class _PeersHeader extends StatelessWidget {
+  const _PeersHeader({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: <Widget>[
+        Text('PCs en la red', style: theme.textTheme.titleSmall),
+        const Spacer(),
+        Text(
+          '$count encontrada${count == 1 ? '' : 's'}',
+          style: theme.textTheme.bodySmall,
+        ),
+      ],
+    );
+  }
+}
+
 class _EmptyState extends StatelessWidget {
   const _EmptyState({required this.controller});
 
@@ -207,7 +406,8 @@ class _EmptyState extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
               'Comprueba que la PC tenga J-SCAN abierto, que ambas estén en '
-              'la misma red y que el firewall permita UDP 5353 y TCP 47821.',
+              'la misma red y que el firewall permita UDP 5353 y TCP 47821. '
+              'También puedes emparejar pegando el código.',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodySmall,
             ),
@@ -227,16 +427,23 @@ class _EmptyState extends StatelessWidget {
 }
 
 class _PeerCard extends StatelessWidget {
-  const _PeerCard({required this.peer, required this.controller});
+  const _PeerCard({
+    required this.peer,
+    required this.controller,
+    required this.onPair,
+  });
 
   final DiscoveredPeer peer;
   final DiscoveryController controller;
+  final VoidCallback onPair;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final result = controller.resultFor(peer);
     final probing = controller.isProbing(peer);
+    final paired = controller.serverForPeer(peer);
+    final canPair = peer.isCompatible && !probing;
 
     return Card(
       child: Padding(
@@ -247,29 +454,37 @@ class _PeerCard extends StatelessWidget {
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: CircleAvatar(
-                backgroundColor: theme.colorScheme.primaryContainer,
+                backgroundColor: paired != null
+                    ? theme.colorScheme.primaryContainer
+                    : theme.colorScheme.surfaceContainerHighest,
                 child: Icon(
-                  Icons.computer,
-                  color: theme.colorScheme.onPrimaryContainer,
+                  paired != null ? Icons.lock : Icons.computer,
+                  color: paired != null
+                      ? theme.colorScheme.onPrimaryContainer
+                      : theme.colorScheme.onSurfaceVariant,
                 ),
               ),
               title: Text(peer.name),
               subtitle: Text(
                 '${peer.connectHost}:${peer.port} · '
-                'protocolo ${peer.protocolVersion}',
+                'protocolo ${peer.protocolVersion}'
+                '${paired == null ? ' · sin emparejar' : ' · emparejada'}',
               ),
-              trailing: FilledButton.tonal(
-                onPressed: !peer.isCompatible || probing
-                    ? null
-                    : () => controller.probe(peer),
-                child: probing
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Probar'),
-              ),
+              trailing: paired == null
+                  ? FilledButton(
+                      onPressed: canPair ? onPair : null,
+                      child: const Text('Emparejar'),
+                    )
+                  : FilledButton.tonal(
+                      onPressed: canPair ? () => controller.probe(peer) : null,
+                      child: probing
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Conectar'),
+                    ),
             ),
             if (!peer.isCompatible)
               Padding(
@@ -279,161 +494,22 @@ class _PeerCard extends StatelessWidget {
                   style: TextStyle(color: theme.colorScheme.error),
                 ),
               ),
+            if (paired != null && result == null)
+              Padding(
+                padding: const EdgeInsets.only(left: 4, top: 4),
+                child: Text(
+                  'Toca «Conectar» para autenticar y medir el ping cifrado.',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ),
             if (result != null)
               Padding(
                 padding: const EdgeInsets.only(left: 4, top: 8),
-                child: _ProbeResultView(result: result),
+                child: ProbeResultView(result: result),
               ),
           ],
         ),
       ),
-    );
-  }
-}
-
-class _ProbeResultView extends StatelessWidget {
-  const _ProbeResultView({required this.result});
-
-  final PeerProbeResult result;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    if (!result.ok) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Icon(Icons.error_outline, size: 18, color: theme.colorScheme.error),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              'Sin conexión: ${result.error}',
-              style: TextStyle(color: theme.colorScheme.error),
-            ),
-          ),
-        ],
-      );
-    }
-
-    final average = result.averageRtt;
-    final best = result.bestRtt;
-    return Row(
-      children: <Widget>[
-        const Icon(Icons.check_circle, size: 18, color: Colors.green),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(
-            'Conectado a ${result.serverName ?? 'la PC'} · '
-            '${average?.inMilliseconds ?? 0} ms de promedio '
-            '(${best?.inMilliseconds ?? 0} ms el mejor de '
-            '${result.rtts.length})',
-            style: theme.textTheme.bodySmall,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ManualConnectDialog extends StatefulWidget {
-  const _ManualConnectDialog({required this.controller});
-
-  final DiscoveryController controller;
-
-  @override
-  State<_ManualConnectDialog> createState() => _ManualConnectDialogState();
-}
-
-class _ManualConnectDialogState extends State<_ManualConnectDialog> {
-  final TextEditingController _host = TextEditingController();
-  final TextEditingController _port = TextEditingController(
-    text: '${JScanDefaults.port}',
-  );
-
-  bool _testing = false;
-  PeerProbeResult? _result;
-
-  @override
-  void dispose() {
-    _host.dispose();
-    _port.dispose();
-    super.dispose();
-  }
-
-  Future<void> _test() async {
-    final host = _host.text.trim();
-    final port = int.tryParse(_port.text.trim());
-    if (host.isEmpty || port == null) {
-      setState(() {
-        _result = const PeerProbeResult(
-          error: 'Escribe una IP y un puerto válidos',
-        );
-      });
-      return;
-    }
-
-    setState(() {
-      _testing = true;
-      _result = null;
-    });
-
-    final result = await widget.controller.probeManual(
-      host: host,
-      port: port,
-    );
-    if (!mounted) return;
-    setState(() {
-      _testing = false;
-      _result = result;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Conexión manual'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            TextField(
-              controller: _host,
-              keyboardType: TextInputType.url,
-              decoration: const InputDecoration(
-                labelText: 'IP de la PC',
-                hintText: '192.168.1.20',
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _port,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Puerto'),
-            ),
-            if (_result != null) ...<Widget>[
-              const SizedBox(height: 16),
-              _ProbeResultView(result: _result!),
-            ],
-          ],
-        ),
-      ),
-      actions: <Widget>[
-        TextButton(
-          onPressed: _testing ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cerrar'),
-        ),
-        FilledButton(
-          onPressed: _testing ? null : _test,
-          child: _testing
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('Probar'),
-        ),
-      ],
     );
   }
 }

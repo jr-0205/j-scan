@@ -10,8 +10,10 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_riverpod: 2.6.1
+  flutter_secure_storage: ^11.2.0
   jscan_core:
     path: ../../packages/jscan_core
+  mobile_scanner: ^7.4.3
 
 dev_dependencies:
   flutter_test:

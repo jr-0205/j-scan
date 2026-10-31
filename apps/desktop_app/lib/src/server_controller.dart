@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:jscan_core/jscan_core.dart';
+import 'package:path_provider/path_provider.dart';
 
 enum ServerStatus { idle, starting, running, error }
 
@@ -15,7 +16,7 @@ final class ActivityEntry {
 }
 
 /// Arranca el servidor local y el anunciante mDNS, y mantiene el estado
-/// que consume la UI.
+/// que consume la UI (sesiones, dispositivos emparejados, QR y actividad).
 final class ServerController extends ChangeNotifier {
   ServerController({this.autoStart = true}) {
     if (autoStart) {
@@ -30,10 +31,19 @@ final class ServerController extends ChangeNotifier {
   String? primaryAddress;
   List<ClientSession> sessions = const <ClientSession>[];
   List<ActivityEntry> activity = const <ActivityEntry>[];
+  List<PairedDevice> pairedDevices = const <PairedDevice>[];
+
+  PairingCode? pairingCode;
+  bool pairingOpen = false;
+  DateTime? pairingExpiresAt;
+  PairingRequest? pendingPairing;
 
   LocalServer? _server;
   MdnsAdvertiser? _advertiser;
   StreamSubscription<ServerEvent>? _events;
+  Timer? _pairingTimer;
+  Timer? _pairingDecisionTimer;
+  Completer<bool>? _pairingDecision;
 
   int get port => _server?.port ?? JScanDefaults.port;
 
@@ -42,6 +52,8 @@ final class ServerController extends ChangeNotifier {
   String get displayName => _server?.name ?? Platform.localHostname;
 
   String get serverId => _server?.id ?? '—';
+
+  String get pairingCodeText => pairingCode?.encode() ?? '';
 
   List<ActivityEntry> get recentActivity => activity.take(8).toList();
 
@@ -54,7 +66,21 @@ final class ServerController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final server = await LocalServer.start();
+      final support = await getApplicationSupportDirectory();
+      final separator = Platform.pathSeparator;
+      final identityFile = LocalIdentityFile(
+        File('${support.path}${separator}identity.json'),
+      );
+      final identity = await identityFile.loadOrCreate();
+      final devices = JsonPairedDeviceRepository(
+        File('${support.path}${separator}paired_devices.json'),
+      );
+
+      final server = await LocalServer.start(
+        identity: identity,
+        pairedDevices: devices,
+        onPairingRequest: _confirmPairing,
+      );
       _server = server;
       _events = server.events.listen(_onEvent);
 
@@ -72,6 +98,7 @@ final class ServerController extends ChangeNotifier {
 
       primaryAddress = await primaryLocalAddress();
       sessions = server.sessions;
+      pairedDevices = await server.listPairedDevices();
       status = ServerStatus.running;
       _addActivity('Servidor escuchando en el puerto ${server.port}');
       _addActivity('Anuncio mDNS activo');
@@ -96,6 +123,85 @@ final class ServerController extends ChangeNotifier {
     await start();
   }
 
+  /// Genera un QR nuevo y abre la ventana de emparejamiento.
+  Future<void> openPairing() async {
+    final server = _server;
+    if (server == null || status != ServerStatus.running) return;
+
+    try {
+      final code = await server.openPairing();
+      pairingCode = code;
+      pairingOpen = true;
+      pairingExpiresAt = code.expiresAt;
+      _schedulePairingExpiry(code.expiresAt);
+      _addActivity(
+        'QR de emparejamiento abierto hasta '
+        '${_formatClock(code.expiresAt)}',
+      );
+      notifyListeners();
+    } catch (error) {
+      _addActivity('No se pudo abrir el emparejamiento: $error');
+      notifyListeners();
+    }
+  }
+
+  /// Cierra la ventana y descarta el QR actual.
+  void closePairing() {
+    _pairingTimer?.cancel();
+    _pairingTimer = null;
+    _server?.closePairing();
+    pairingOpen = false;
+    pairingCode = null;
+    pairingExpiresAt = null;
+    notifyListeners();
+  }
+
+  /// Responde a la confirmación que espera el servidor.
+  void resolvePairing(bool accept) {
+    final decision = _pairingDecision;
+    _pairingDecision = null;
+    _pairingDecisionTimer?.cancel();
+    _pairingDecisionTimer = null;
+    pendingPairing = null;
+    if (decision != null && !decision.isCompleted) {
+      decision.complete(accept);
+    }
+    notifyListeners();
+  }
+
+  /// Revoca un dispositivo; cualquier sesión suya se cierra.
+  Future<void> removeDevice(PairedDevice device) async {
+    final server = _server;
+    if (server == null) return;
+    final removed = await server.removePairedDevice(device.deviceId);
+    if (!removed) return;
+    pairedDevices = pairedDevices
+        .where((item) => item.deviceId != device.deviceId)
+        .toList();
+    _addActivity('${device.name} eliminado de los dispositivos emparejados');
+    notifyListeners();
+  }
+
+  Future<bool> _confirmPairing(PairingRequest request) {
+    final completer = Completer<bool>();
+    _pairingDecision = completer;
+    pendingPairing = request;
+    _pairingDecisionTimer?.cancel();
+    _pairingDecisionTimer = Timer(
+      JScanDefaults.pairingConfirmationTimeout,
+      () {
+        if (identical(_pairingDecision, completer)) {
+          _pairingDecision = null;
+          pendingPairing = null;
+          if (!completer.isCompleted) completer.complete(false);
+          notifyListeners();
+        }
+      },
+    );
+    notifyListeners();
+    return completer.future;
+  }
+
   void _onEvent(ServerEvent event) {
     switch (event) {
       case ServerClientConnected(:final session):
@@ -107,6 +213,11 @@ final class ServerController extends ChangeNotifier {
           'se identificó',
         );
         break;
+      case ServerClientAuthenticated(:final session):
+        _addActivity(
+          '${session.displayName} autenticado; mensajes cifrados',
+        );
+        break;
       case ServerClientDisconnected(:final sessionId):
         final previous = sessions.where((item) => item.id == sessionId);
         final name =
@@ -115,6 +226,26 @@ final class ServerController extends ChangeNotifier {
         break;
       case ServerPingReceived(:final session):
         _addActivity('Ping de ${session.displayName}');
+        break;
+      case ServerPairingWindowChanged(:final open):
+        if (!open) {
+          _pairingTimer?.cancel();
+          _pairingTimer = null;
+          pairingOpen = false;
+          pairingCode = null;
+          pairingExpiresAt = null;
+        }
+        break;
+      case ServerDevicePaired(:final device):
+        _addActivity('${device.name} emparejado y autorizado');
+        unawaited(_reloadDevices());
+        break;
+      case ServerDeviceRemoved(:final deviceId):
+        pairedDevices =
+            pairedDevices.where((item) => item.deviceId != deviceId).toList();
+        break;
+      case ServerPairingFailed(:final code, :final message):
+        _addActivity('Emparejamiento rechazado ($code): $message');
         break;
       case ServerErrorEvent(:final message):
         _addActivity('Error: $message');
@@ -125,12 +256,43 @@ final class ServerController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> _reloadDevices() async {
+    final server = _server;
+    if (server == null) return;
+    pairedDevices = await server.listPairedDevices();
+    notifyListeners();
+  }
+
+  void _schedulePairingExpiry(DateTime expiresAt) {
+    _pairingTimer?.cancel();
+    final delay = expiresAt.difference(DateTime.now());
+    _pairingTimer = Timer(
+      delay.isNegative ? Duration.zero : delay,
+      () {
+        pairingOpen = false;
+        pairingCode = null;
+        pairingExpiresAt = null;
+        notifyListeners();
+      },
+    );
+  }
+
   void _addActivity(String message) {
     final entry = ActivityEntry(DateTime.now(), message);
     activity = <ActivityEntry>[entry, ...activity].take(50).toList();
   }
 
   Future<void> _stopResources() async {
+    _pairingTimer?.cancel();
+    _pairingTimer = null;
+    _pairingDecisionTimer?.cancel();
+    _pairingDecisionTimer = null;
+    _pairingDecision = null;
+    pendingPairing = null;
+    pairingOpen = false;
+    pairingCode = null;
+    pairingExpiresAt = null;
+
     await _events?.cancel();
     _events = null;
     await _advertiser?.stop();
@@ -138,6 +300,7 @@ final class ServerController extends ChangeNotifier {
     await _server?.stop();
     _server = null;
     sessions = const <ClientSession>[];
+    pairedDevices = const <PairedDevice>[];
   }
 
   @override
@@ -145,4 +308,9 @@ final class ServerController extends ChangeNotifier {
     unawaited(_stopResources());
     super.dispose();
   }
+}
+
+String _formatClock(DateTime time) {
+  String two(int value) => value.toString().padLeft(2, '0');
+  return '${two(time.hour)}:${two(time.minute)}:${two(time.second)}';
 }

@@ -8,9 +8,22 @@ import 'protocol_exception.dart';
 enum MessageType {
   hello('hello'),
   helloAck('hello_ack'),
+  challenge('challenge'),
+  auth('auth'),
+  authOk('auth_ok'),
   ping('ping'),
   pong('pong'),
   error('error'),
+
+  // Sprint 2: emparejamiento.
+  pairHello('pair_hello'),
+  pairChallenge('pair_challenge'),
+  pairRequest('pair_request'),
+  pairAccept('pair_accept'),
+  pairReject('pair_reject'),
+
+  // Cifrado de extremo a extremo.
+  encrypted('encrypted'),
 
   // Reservados para sprints posteriores.
   text('text'),
@@ -18,10 +31,7 @@ enum MessageType {
   fileOffer('file_offer'),
   fileChunk('file_chunk'),
   fileComplete('file_complete'),
-  cancel('cancel'),
-  pairRequest('pair_request'),
-  pairAccept('pair_accept'),
-  encrypted('encrypted');
+  cancel('cancel');
 
   const MessageType(this.wire);
 

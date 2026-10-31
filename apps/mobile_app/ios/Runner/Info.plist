@@ -26,6 +26,8 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>J-SCAN usa la cámara para escanear el código QR de emparejamiento que muestra tu PC.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>J-SCAN usa la red local para encontrar tu PC y enviarle contenido sin pasar por internet.</string>
 	<key>NSBonjourServices</key>

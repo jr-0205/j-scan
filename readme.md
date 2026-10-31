@@ -103,12 +103,18 @@ Si quieres, puedo pasar todo esto a un documento editable, o detallar las tareas
 
 # Estado del repositorio
 
-Sprint 0 y Sprint 1 implementados:
+Sprint 0, Sprint 1 y Sprint 2 implementados:
 
 - monorepo con Melos (`packages/jscan_core`, `apps/desktop_app`, `apps/mobile_app`);
-- protocolo v1 documentado en [docs/protocol.md](docs/protocol.md);
+- protocolo v1 documentado en [docs/protocol.md](docs/protocol.md), incluido el
+  emparejamiento y el cifrado;
 - servidor local con puerto fijo, mDNS, bandeja del sistema y UI de actividad;
 - app móvil que descubre PCs, lista IP/puerto y prueba la conexión con ping;
-- CI en GitHub Actions y pruebas automáticas (incluida la prueba mDNS E2E).
+- **Sprint 2**: QR de un solo uso, identidades X25519 persistentes, HKDF-SHA256,
+  ChaCha20-Poly1305 en todos los mensajes autenticados, confirmación en la PC y
+  gestión/revocación de dispositivos emparejados;
+- un dispositivo no emparejado recibe `not_paired` y la conexión se cierra;
+- CI en GitHub Actions y pruebas automáticas (incluida la prueba mDNS E2E con
+  emparejamiento y ping cifrado).
 
 Guía de ejecución: [docs/getting-started.md](docs/getting-started.md).

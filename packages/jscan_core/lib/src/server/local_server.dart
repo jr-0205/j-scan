@@ -7,7 +7,14 @@ import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_web_socket/shelf_web_socket.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../crypto/bytes.dart';
+import '../crypto/identity.dart';
+import '../crypto/pairing_code.dart';
+import '../crypto/secure_channel.dart';
 import '../network/network_info.dart';
+import '../pairing/paired_device.dart';
+import '../pairing/pairing_manager.dart';
+import '../pairing/repositories.dart';
 import '../protocol/constants.dart';
 import '../protocol/device_info.dart';
 import '../protocol/messages.dart';
@@ -31,25 +38,51 @@ final class LocalServerException implements Exception {
 
 /// Servidor HTTP/WebSocket de la PC.
 ///
-/// Sprint 1: `GET /health`, `GET /api/info`, `WS /ws` con `hello` y `ping`.
+/// Sprint 2: `GET /health`, `GET /api/info`, `WS /ws` con emparejamiento por QR,
+/// autenticación X25519 y mensajes cifrados con ChaCha20-Poly1305.
 final class LocalServer {
   LocalServer._({
-    required this.id,
+    required this.identity,
+    required PairedDeviceRepository devices,
     required this.name,
     required this.appVersion,
-  }) : startedAt = DateTime.now();
+    PairingConfirmation? onPairingRequest,
+    Duration pairingWindow = JScanDefaults.pairingWindow,
+    Duration pairingConfirmationTimeout =
+        JScanDefaults.pairingConfirmationTimeout,
+  })  : _devices = devices,
+        startedAt = DateTime.now() {
+    _pairing = PairingManager(
+      identity: identity,
+      serverName: name,
+      appVersion: appVersion,
+      devices: devices,
+      onConfirm: onPairingRequest,
+      windowDuration: pairingWindow,
+      confirmationTimeout: pairingConfirmationTimeout,
+    );
+  }
 
   static Future<LocalServer> start({
+    required LocalIdentity identity,
+    required PairedDeviceRepository pairedDevices,
     int port = JScanDefaults.port,
-    String? id,
     String? name,
     String appVersion = '0.1.0',
     bool includeLoopback = false,
+    PairingConfirmation? onPairingRequest,
+    Duration pairingWindow = JScanDefaults.pairingWindow,
+    Duration pairingConfirmationTimeout =
+        JScanDefaults.pairingConfirmationTimeout,
   }) async {
     final server = LocalServer._(
-      id: id ?? newId(8),
+      identity: identity,
+      devices: pairedDevices,
       name: name ?? Platform.localHostname,
       appVersion: appVersion,
+      onPairingRequest: onPairingRequest,
+      pairingWindow: pairingWindow,
+      pairingConfirmationTimeout: pairingConfirmationTimeout,
     );
     server._includeLoopback = includeLoopback;
 
@@ -72,15 +105,17 @@ final class LocalServer {
     return server;
   }
 
-  final String id;
+  final LocalIdentity identity;
   final String name;
   final String appVersion;
   final DateTime startedAt;
 
+  final PairedDeviceRepository _devices;
+  late final PairingManager _pairing;
   late final HttpServer _httpServer;
   late bool _includeLoopback;
 
-  final Map<String, ClientSession> _sessions = <String, ClientSession>{};
+  final Map<String, _SessionRuntime> _runtimes = <String, _SessionRuntime>{};
   final Map<String, WebSocketChannel> _channels = <String, WebSocketChannel>{};
   final Map<String, StreamSubscription<dynamic>> _subscriptions =
       <String, StreamSubscription<dynamic>>{};
@@ -89,14 +124,20 @@ final class LocalServer {
 
   bool _stopping = false;
 
+  String get id => identity.id;
   int get port => _httpServer.port;
   bool get isRunning => !_stopping;
 
-  /// Eventos de conexión, handshake y ping.
+  /// QR vigente, o `null` si la ventana de emparejamiento está cerrada.
+  PairingCode? get pairingCode => _pairing.currentCode;
+  bool get isPairingOpen => _pairing.isOpen;
+  DateTime? get pairingExpiresAt => _pairing.expiresAt;
+
+  /// Eventos de conexión, autenticación, emparejamiento y ping.
   Stream<ServerEvent> get events => _events.stream;
 
   List<ClientSession> get sessions {
-    final list = _sessions.values.toList()
+    final list = _runtimes.values.map((runtime) => runtime.session).toList()
       ..sort((a, b) => a.connectedAt.compareTo(b.connectedAt));
     return List<ClientSession>.unmodifiable(list);
   }
@@ -107,10 +148,65 @@ final class LocalServer {
   Uri wsUri(String host) =>
       Uri(scheme: 'ws', host: host, port: port, path: JScanDefaults.wsPath);
 
+  /// Abre una ventana de emparejamiento y genera un QR nuevo.
+  Future<PairingCode> openPairing({String? host, Duration? duration}) async {
+    final address = host ??
+        await primaryLocalAddress() ??
+        InternetAddress.loopbackIPv4.address;
+    final code = _pairing.open(
+      host: address,
+      port: port,
+      duration: duration,
+    );
+    _emit(ServerPairingWindowChanged(open: true, expiresAt: code.expiresAt));
+    return code;
+  }
+
+  /// Cierra la ventana y descarta los códigos pendientes.
+  void closePairing() {
+    final wasOpen = _pairing.isOpen;
+    _pairing.close();
+    if (wasOpen) {
+      _emit(const ServerPairingWindowChanged(open: false));
+    }
+  }
+
+  Future<List<PairedDevice>> listPairedDevices() => _devices.all();
+
+  /// Revoca un dispositivo. Sus sesiones activas se cierran de inmediato.
+  Future<bool> removePairedDevice(String deviceId) async {
+    final existing = await _devices.find(deviceId);
+    if (existing == null) return false;
+
+    await _devices.remove(deviceId);
+
+    for (final runtime in _runtimes.values.toList()) {
+      if (runtime.session.pairedDeviceId != deviceId) continue;
+      final cipher = runtime.cipher;
+      if (cipher != null) {
+        await _sendSecure(
+          runtime,
+          Envelope.create(
+            MessageType.error,
+            payload: <String, Object?>{
+              'code': ProtocolErrorCode.notPaired,
+              'message': 'Este dispositivo fue desautorizado por la PC',
+            },
+          ),
+        );
+      }
+      await _closeSession(runtime.session.id);
+    }
+
+    _emit(ServerDeviceRemoved(deviceId));
+    return true;
+  }
+
   Future<Map<String, Object?>> health() async {
     final addresses = await localIPv4Addresses(
       includeLoopback: _includeLoopback,
     );
+    final paired = await _devices.all();
     return <String, Object?>{
       'status': 'ok',
       'id': id,
@@ -122,7 +218,10 @@ final class LocalServer {
       'time': DateTime.now().toUtc().toIso8601String(),
       'addresses': addresses,
       'uptimeSeconds': DateTime.now().difference(startedAt).inSeconds,
-      'sessions': _sessions.length,
+      'sessions': _runtimes.length,
+      'pairingRequired': true,
+      'pairingOpen': _pairing.isOpen,
+      'pairedDevices': paired.length,
     };
   }
 
@@ -143,7 +242,7 @@ final class LocalServer {
       await subscription.cancel();
     }
     _subscriptions.clear();
-    _sessions.clear();
+    _runtimes.clear();
 
     await _httpServer.close(force: true);
     await _events.close();
@@ -194,12 +293,13 @@ final class LocalServer {
       connectedAt: now,
       lastSeen: now,
     );
-    _sessions[session.id] = session;
+    final runtime = _SessionRuntime(session);
+    _runtimes[session.id] = runtime;
     _channels[session.id] = channel;
     _emit(ServerClientConnected(session));
 
     _subscriptions[session.id] = channel.stream.listen(
-      (data) => _onData(session.id, data),
+      (data) => _enqueue(runtime, data),
       onDone: () => _removeSession(session.id),
       onError: (Object error, StackTrace stackTrace) {
         _emit(
@@ -213,18 +313,32 @@ final class LocalServer {
     );
   }
 
-  void _onData(String sessionId, Object? data) {
-    final channel = _channels[sessionId];
+  void _enqueue(_SessionRuntime runtime, Object? data) {
+    runtime.queue = runtime.queue.then((_) async {
+      try {
+        await _handleFrame(runtime, data);
+      } catch (error) {
+        _emit(
+          ServerErrorEvent(
+            code: ProtocolErrorCode.internalError,
+            message: 'Error al procesar un mensaje: $error',
+          ),
+        );
+      }
+    });
+  }
+
+  Future<void> _handleFrame(_SessionRuntime runtime, Object? data) async {
+    final channel = _channels[runtime.session.id];
     if (channel == null) return;
 
-    final Envelope envelope;
+    final Envelope outer;
     try {
-      envelope = Envelope.decode(data);
+      outer = Envelope.decode(data);
     } on ProtocolException catch (error) {
-      _send(channel,
-          Envelope.create(MessageType.error, payload: error.toPayload()));
+      _sendError(channel, null, error.code, error.message);
       if (error.code == ProtocolErrorCode.unsupportedVersion) {
-        unawaited(_closeSession(sessionId));
+        await _closeSession(runtime.session.id);
       }
       return;
     } catch (error) {
@@ -237,30 +351,87 @@ final class LocalServer {
       return;
     }
 
-    final type = envelope.knownType;
+    final type = outer.knownType;
     if (type == null) {
       _sendError(
         channel,
-        envelope.id,
+        outer.id,
         ProtocolErrorCode.unsupportedType,
-        'Tipo no soportado: ${envelope.type}',
+        'Tipo no soportado: ${outer.type}',
       );
       return;
     }
 
-    switch (type) {
-      case MessageType.hello:
-        _handleHello(sessionId, channel, envelope);
-        break;
-      case MessageType.ping:
-        _handlePing(sessionId, channel, envelope);
-        break;
-      case MessageType.helloAck:
-      case MessageType.pong:
-      case MessageType.error:
+    if (type == MessageType.encrypted) {
+      final cipher = runtime.cipher;
+      if (cipher == null) {
         _sendError(
           channel,
-          envelope.id,
+          outer.id,
+          ProtocolErrorCode.notPaired,
+          'Empareja este dispositivo antes de enviar mensajes cifrados',
+        );
+        await _closeSession(runtime.session.id);
+        return;
+      }
+
+      final Envelope inner;
+      try {
+        inner = await cipher.openEnvelope(outer);
+      } catch (error) {
+        _sendError(
+          channel,
+          outer.id,
+          ProtocolErrorCode.unauthorized,
+          'No se pudo descifrar el mensaje: $error',
+        );
+        await _closeSession(runtime.session.id);
+        return;
+      }
+
+      await _handleSecure(runtime, inner);
+      return;
+    }
+
+    if (runtime.cipher != null) {
+      _sendError(
+        channel,
+        outer.id,
+        ProtocolErrorCode.unauthorized,
+        'Los mensajes de una sesión autenticada deben ir cifrados',
+      );
+      await _closeSession(runtime.session.id);
+      return;
+    }
+
+    switch (type) {
+      case MessageType.pairHello:
+        _handlePairHello(runtime, outer);
+        break;
+      case MessageType.pairRequest:
+        await _handlePairRequest(runtime, outer);
+        break;
+      case MessageType.hello:
+        await _handleHello(runtime, outer);
+        break;
+      case MessageType.auth:
+        await _handleAuth(runtime, outer);
+        break;
+      case MessageType.ping:
+        await _rejectNotPaired(runtime, outer, channel);
+        break;
+      case MessageType.helloAck:
+      case MessageType.challenge:
+      case MessageType.authOk:
+      case MessageType.pong:
+      case MessageType.error:
+      case MessageType.pairChallenge:
+      case MessageType.pairAccept:
+      case MessageType.pairReject:
+      case MessageType.encrypted:
+        _sendError(
+          channel,
+          outer.id,
           ProtocolErrorCode.unsupportedType,
           'El servidor no espera ${type.wire} de un cliente',
         );
@@ -268,34 +439,263 @@ final class LocalServer {
       default:
         _sendError(
           channel,
-          envelope.id,
+          outer.id,
           ProtocolErrorCode.unsupportedType,
           'Tipo no implementado todavía: ${type.wire}',
         );
     }
   }
 
-  void _handleHello(
-    String sessionId,
-    WebSocketChannel channel,
-    Envelope envelope,
-  ) {
+  void _handlePairHello(_SessionRuntime runtime, Envelope envelope) {
+    final channel = _channels[runtime.session.id];
+    if (channel == null) return;
+
     try {
       final device = DeviceInfo.fromJson(envelope.payload['device']);
-      final current = _sessions[sessionId];
-      if (current == null) return;
+      final publicKey = _requireBytes(envelope.payload['publicKey']);
+      final challenge = _pairing.begin(
+        sessionId: runtime.session.id,
+        device: device,
+        devicePublicKey: publicKey,
+      );
 
-      final updated = current.copyWith(
+      runtime.session = runtime.session.copyWith(
         device: device,
         lastSeen: DateTime.now(),
+        state: ClientSessionState.pairing,
       );
-      _sessions[sessionId] = updated;
-      _emit(ServerClientUpdated(updated));
+      _emit(ServerClientUpdated(runtime.session));
 
       _send(
         channel,
         Envelope.create(
-          MessageType.helloAck,
+          MessageType.pairChallenge,
+          id: envelope.id,
+          payload: <String, Object?>{
+            'nonce': encodeBase64(challenge.nonce),
+            'serverId': id,
+            'serverName': name,
+            'protocolVersion': JScanDefaults.protocolVersion,
+            'expiresAt': challenge.expiresAt.toUtc().millisecondsSinceEpoch,
+          },
+        ),
+      );
+    } on ProtocolException catch (error) {
+      _sendError(channel, envelope.id, error.code, error.message);
+    } catch (error) {
+      _sendError(
+        channel,
+        envelope.id,
+        ProtocolErrorCode.internalError,
+        'No se pudo iniciar el emparejamiento: $error',
+      );
+    }
+  }
+
+  Future<void> _handlePairRequest(
+    _SessionRuntime runtime,
+    Envelope envelope,
+  ) async {
+    final channel = _channels[runtime.session.id];
+    if (channel == null) return;
+
+    try {
+      final challenge = envelope.stringField('challenge');
+      final nonce = envelope.stringField('nonce');
+      final box = envelope.stringField('box');
+      if (challenge == null || nonce == null || box == null) {
+        throw const ProtocolException(
+          ProtocolErrorCode.invalidPayload,
+          'pair_request requiere challenge, nonce y box',
+        );
+      }
+
+      final outcome = await _pairing.finish(
+        sessionId: runtime.session.id,
+        challenge: challenge,
+        nonce: nonce,
+        box: box,
+        remoteAddress: runtime.session.remoteAddress,
+      );
+
+      _send(
+        channel,
+        Envelope.create(
+          MessageType.pairAccept,
+          id: envelope.id,
+          payload: <String, Object?>{
+            'deviceId': outcome.device.deviceId,
+            'server': DeviceInfo(
+              id: id,
+              name: name,
+              platform: currentPlatform(),
+              appVersion: appVersion,
+            ).toJson(),
+            'proof': outcome.proof,
+            'pairedAt': outcome.pairedAt.toUtc().millisecondsSinceEpoch,
+          },
+        ),
+      );
+      _emit(ServerDevicePaired(outcome.device));
+      _emit(const ServerPairingWindowChanged(open: false));
+
+      // El celular cierra la conexión y vuelve a entrar ya autenticado.
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      await _closeSession(runtime.session.id);
+    } on ProtocolException catch (error) {
+      _send(
+        channel,
+        Envelope.create(
+          MessageType.pairReject,
+          id: envelope.id,
+          payload: <String, Object?>{
+            'code': error.code,
+            'message': error.message,
+          },
+        ),
+      );
+      _emit(
+        ServerPairingFailed(code: error.code, message: error.message),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      await _closeSession(runtime.session.id);
+    } catch (error) {
+      _sendError(
+        channel,
+        envelope.id,
+        ProtocolErrorCode.internalError,
+        'No se pudo completar el emparejamiento: $error',
+      );
+      await _closeSession(runtime.session.id);
+    }
+  }
+
+  Future<void> _handleHello(_SessionRuntime runtime, Envelope envelope) async {
+    final channel = _channels[runtime.session.id];
+    if (channel == null) return;
+
+    try {
+      final device = DeviceInfo.fromJson(envelope.payload['device']);
+      final publicKey = _requireBytes(envelope.payload['publicKey']);
+      final paired = await _devices.find(device.id);
+
+      if (paired == null || !constantTimeEquals(paired.publicKey, publicKey)) {
+        _sendError(
+          channel,
+          envelope.id,
+          ProtocolErrorCode.notPaired,
+          'Este dispositivo no está emparejado con la PC',
+        );
+        await _closeSession(runtime.session.id);
+        return;
+      }
+
+      final nonce = secureRandomBytes(32);
+      runtime.auth = _AuthChallenge(device: paired, nonce: nonce);
+      runtime.session = runtime.session.copyWith(
+        device: device,
+        lastSeen: DateTime.now(),
+        state: ClientSessionState.unauthenticated,
+      );
+      _emit(ServerClientUpdated(runtime.session));
+
+      _send(
+        channel,
+        Envelope.create(
+          MessageType.challenge,
+          id: envelope.id,
+          payload: <String, Object?>{
+            'nonce': encodeBase64(nonce),
+            'serverId': id,
+            'deviceId': device.id,
+          },
+        ),
+      );
+    } on ProtocolException catch (error) {
+      _sendError(channel, envelope.id, error.code, error.message);
+      await _closeSession(runtime.session.id);
+    } catch (error) {
+      _sendError(
+        channel,
+        envelope.id,
+        ProtocolErrorCode.internalError,
+        'No se pudo autenticar: $error',
+      );
+      await _closeSession(runtime.session.id);
+    }
+  }
+
+  Future<void> _handleAuth(_SessionRuntime runtime, Envelope envelope) async {
+    final channel = _channels[runtime.session.id];
+    if (channel == null) return;
+
+    final challenge = runtime.auth;
+    if (challenge == null) {
+      _sendError(
+        channel,
+        envelope.id,
+        ProtocolErrorCode.notPaired,
+        'Primero envía hello y espera el challenge',
+      );
+      await _closeSession(runtime.session.id);
+      return;
+    }
+
+    final proof = envelope.stringField('proof');
+    if (proof == null || proof.isEmpty) {
+      _sendError(
+        channel,
+        envelope.id,
+        ProtocolErrorCode.invalidPayload,
+        'auth requiere proof',
+      );
+      await _closeSession(runtime.session.id);
+      return;
+    }
+
+    try {
+      final shared = await identity.sharedSecret(challenge.device.publicKey);
+      final authKey = await SecureChannel.deriveAuthKey(shared, id);
+      final valid = await SecureChannel.verifyHmac(
+        key: authKey,
+        message: 'auth|$id|${challenge.device.deviceId}|'
+            '${encodeBase64(challenge.nonce)}',
+        expected: proof,
+      );
+      if (!valid) {
+        _sendError(
+          channel,
+          envelope.id,
+          ProtocolErrorCode.badProof,
+          'La prueba de identidad no es válida',
+        );
+        await _closeSession(runtime.session.id);
+        return;
+      }
+
+      final cipher = await SessionCipher.derive(
+        sharedSecret: shared,
+        serverId: id,
+        deviceId: challenge.device.deviceId,
+        serverNonce: challenge.nonce,
+      );
+      runtime.cipher = cipher;
+      runtime.auth = null;
+
+      final now = DateTime.now();
+      runtime.session = runtime.session.copyWith(
+        lastSeen: now,
+        state: ClientSessionState.authenticated,
+        pairedDeviceId: challenge.device.deviceId,
+      );
+      await _devices.upsert(challenge.device.copyWith(lastSeenAt: now));
+      _emit(ServerClientAuthenticated(runtime.session));
+      _emit(ServerClientUpdated(runtime.session));
+
+      await _sendSecure(
+        runtime,
+        Envelope.create(
+          MessageType.authOk,
           id: envelope.id,
           payload: <String, Object?>{
             'server': DeviceInfo(
@@ -306,46 +706,73 @@ final class LocalServer {
             ).toJson(),
             'protocolVersion': JScanDefaults.protocolVersion,
             'wsPath': JScanDefaults.wsPath,
-            'pairingRequired': false,
           },
         ),
       );
     } on ProtocolException catch (error) {
-      _send(
+      _sendError(channel, envelope.id, error.code, error.message);
+      await _closeSession(runtime.session.id);
+    } catch (error) {
+      _sendError(
         channel,
-        Envelope.create(
-          MessageType.error,
-          id: envelope.id,
-          payload: error.toPayload(),
-        ),
+        envelope.id,
+        ProtocolErrorCode.internalError,
+        'No se pudo verificar la identidad: $error',
       );
+      await _closeSession(runtime.session.id);
     }
   }
 
-  void _handlePing(
-    String sessionId,
-    WebSocketChannel channel,
+  Future<void> _handleSecure(
+    _SessionRuntime runtime,
     Envelope envelope,
-  ) {
-    final current = _sessions[sessionId];
-    if (current == null) return;
+  ) async {
+    final channel = _channels[runtime.session.id];
+    if (channel == null) return;
 
-    final updated = current.copyWith(lastSeen: DateTime.now());
-    _sessions[sessionId] = updated;
+    switch (envelope.knownType) {
+      case MessageType.ping:
+        final nonce = envelope.stringField('nonce') ?? envelope.id;
+        final updated = runtime.session.copyWith(lastSeen: DateTime.now());
+        runtime.session = updated;
+        await _sendSecure(
+          runtime,
+          Envelope.create(
+            MessageType.pong,
+            id: envelope.id,
+            payload: <String, Object?>{
+              'nonce': nonce,
+              'serverTime': DateTime.now().millisecondsSinceEpoch,
+            },
+          ),
+        );
+        _emit(ServerPingReceived(session: updated, nonce: nonce));
+        break;
+      case MessageType.error:
+        // El cliente informa de un error propio; no requiere respuesta.
+        break;
+      default:
+        _sendError(
+          channel,
+          envelope.id,
+          ProtocolErrorCode.unsupportedType,
+          'Tipo no soportado en una sesión autenticada: ${envelope.type}',
+        );
+    }
+  }
 
-    final nonce = envelope.stringField('nonce') ?? envelope.id;
-    _send(
+  Future<void> _rejectNotPaired(
+    _SessionRuntime runtime,
+    Envelope envelope,
+    WebSocketChannel channel,
+  ) async {
+    _sendError(
       channel,
-      Envelope.create(
-        MessageType.pong,
-        id: envelope.id,
-        payload: <String, Object?>{
-          'nonce': nonce,
-          'serverTime': DateTime.now().millisecondsSinceEpoch,
-        },
-      ),
+      envelope.id,
+      ProtocolErrorCode.notPaired,
+      'Empareja este dispositivo antes de enviar mensajes',
     );
-    _emit(ServerPingReceived(session: updated, nonce: nonce));
+    await _closeSession(runtime.session.id);
   }
 
   void _send(WebSocketChannel channel, Envelope envelope) {
@@ -356,6 +783,23 @@ final class LocalServer {
         ServerErrorEvent(
           code: ProtocolErrorCode.internalError,
           message: 'No se pudo enviar ${envelope.type}: $error',
+        ),
+      );
+    }
+  }
+
+  Future<void> _sendSecure(_SessionRuntime runtime, Envelope inner) async {
+    final cipher = runtime.cipher;
+    final channel = _channels[runtime.session.id];
+    if (cipher == null || channel == null) return;
+    try {
+      final sealed = await cipher.sealEnvelope(inner);
+      _send(channel, sealed);
+    } catch (error) {
+      _emit(
+        ServerErrorEvent(
+          code: ProtocolErrorCode.internalError,
+          message: 'No se pudo cifrar ${inner.type}: $error',
         ),
       );
     }
@@ -377,6 +821,23 @@ final class LocalServer {
     );
   }
 
+  List<int> _requireBytes(Object? value) {
+    if (value is! String || value.isEmpty) {
+      throw const ProtocolException(
+        ProtocolErrorCode.invalidPayload,
+        'Falta la clave pública (publicKey)',
+      );
+    }
+    try {
+      return decodeBase64(value);
+    } catch (_) {
+      throw const ProtocolException(
+        ProtocolErrorCode.invalidPayload,
+        'publicKey no es base64 válido',
+      );
+    }
+  }
+
   Future<void> _closeSession(String sessionId) async {
     final channel = _channels[sessionId];
     if (channel == null) return;
@@ -389,7 +850,7 @@ final class LocalServer {
   }
 
   void _removeSession(String sessionId) {
-    final removed = _sessions.remove(sessionId);
+    final removed = _runtimes.remove(sessionId);
     _channels.remove(sessionId);
     final subscription = _subscriptions.remove(sessionId);
     if (subscription != null) {
@@ -405,4 +866,20 @@ final class LocalServer {
       _events.add(event);
     }
   }
+}
+
+final class _SessionRuntime {
+  _SessionRuntime(this.session);
+
+  ClientSession session;
+  SessionCipher? cipher;
+  _AuthChallenge? auth;
+  Future<void> queue = Future<void>.value();
+}
+
+final class _AuthChallenge {
+  const _AuthChallenge({required this.device, required this.nonce});
+
+  final PairedDevice device;
+  final List<int> nonce;
 }

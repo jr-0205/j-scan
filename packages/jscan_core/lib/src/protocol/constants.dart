@@ -26,4 +26,13 @@ abstract final class JScanDefaults {
 
   /// Tamaño máximo de un frame de texto aceptado (1 MiB).
   static const int maxFrameBytes = 1024 * 1024;
+
+  /// Versión del contenido del QR de emparejamiento.
+  static const int pairingCodeVersion = 1;
+
+  /// Duración por defecto de la ventana para escanear el QR.
+  static const Duration pairingWindow = Duration(minutes: 3);
+
+  /// Tiempo máximo que la PC espera la confirmación del usuario.
+  static const Duration pairingConfirmationTimeout = Duration(minutes: 1);
 }

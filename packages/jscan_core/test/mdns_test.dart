@@ -4,13 +4,17 @@ import 'package:test/test.dart';
 void main() {
   group('mDNS de extremo a extremo', () {
     test(
-      'la PC se anuncia, el cliente la descubre y recibe un pong',
+      'la PC se anuncia, el cliente la descubre, empareja y hace ping cifrado',
       () async {
         final errors = <Object>[];
+        final serverIdentity = await LocalIdentity.generate(id: 'e2eserver');
+        final phoneIdentity = await LocalIdentity.generate(id: 'e2ephone');
         final server = await LocalServer.start(
+          identity: serverIdentity,
+          pairedDevices: InMemoryPairedDeviceRepository(),
           port: 0,
-          id: 'e2eserver',
           name: 'PC E2E',
+          onPairingRequest: (_) async => true,
         );
         final advertiser = MdnsAdvertiser(
           serverId: server.id,
@@ -44,10 +48,29 @@ void main() {
           expect(discovered.protocolVersion, 1);
           expect(discovered.isCompatible, isTrue);
 
-          final client = await JScanClient.connect(
+          final code = await server.openPairing(
             host: discovered.connectHost,
-            port: discovered.port,
           );
+          final pairing = await JScanClient.pair(
+            code: code,
+            identity: phoneIdentity,
+            device: const DeviceInfo(
+              id: 'e2ephone',
+              name: 'Pixel E2E',
+              platform: 'android',
+            ),
+          );
+
+          final client = await JScanClient.connectPaired(
+            server: pairing.server,
+            identity: phoneIdentity,
+            device: const DeviceInfo(
+              id: 'e2ephone',
+              name: 'Pixel E2E',
+              platform: 'android',
+            ),
+          );
+          expect(client.isEncrypted, isTrue);
           final rtt = await client.ping();
           expect(rtt, lessThan(const Duration(seconds: 2)));
           await client.close();

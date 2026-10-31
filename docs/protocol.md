@@ -1,8 +1,8 @@
 # Protocolo J-SCAN v1
 
-Documento del Sprint 0. Define cómo se anuncian, se encuentran y se hablan la PC y el
-celular. La versión 1 cubre **descubrimiento local + ping** (Sprint 1). Las extensiones
-de texto, portapapeles, archivos y escáner se listan al final para reservar sus tipos.
+Define cómo se anuncian, se encuentran, se emparejan y se hablan la PC y el celular.
+La versión de cable sigue siendo **v1**; el Sprint 2 hace obligatorio el
+emparejamiento y cifra todos los mensajes posteriores a la autenticación.
 
 ## 1. Descubrimiento (mDNS / DNS-SD)
 
@@ -35,8 +35,8 @@ TTL: 4500 s para PTR/SRV/TXT y 120 s para A.
 - WebSocket en `ws://<host>:47821/ws`
 - Puerto fijo por defecto: **47821** (`JScanDefaults.port`).
 - Codificación: JSON UTF-8, un mensaje por frame de texto.
-- No se usa TLS: en el Sprint 2 el cifrado será a nivel de aplicación
-  (X25519 + ChaCha20-Poly1305), como decide el readme.
+- No se usa TLS: el cifrado es a nivel de aplicación con **X25519 + HKDF-SHA256 +
+  ChaCha20-Poly1305**. La red local se considera hostil.
 
 ### Endpoints HTTP
 
@@ -51,13 +51,22 @@ TTL: 4500 s para PTR/SRV/TXT y 120 s para A.
   "appVersion": "0.1.0",
   "protocolVersion": 1,
   "wsPath": "/ws",
-  "time": "2026-10-31T12:00:00.000Z"
+  "time": "2026-10-31T12:00:00.000Z",
+  "addresses": ["192.168.1.20"],
+  "uptimeSeconds": 42,
+  "sessions": 1,
+  "pairingRequired": true,
+  "pairingOpen": false,
+  "pairedDevices": 1
 }
 ```
 
-`GET /api/info` devuelve lo mismo más `addresses` (IPv4 locales) y `uptimeSeconds`.
+`GET /api/info` devuelve exactamente la misma información que `/health`. Cualquier
+otra ruta responde `404` con un sobre de error.
 
-Cualquier otra ruta responde `404` con un sobre de error.
+`pairingOpen` indica si la ventana de emparejamiento está abierta; `pairedDevices`
+cuenta los dispositivos autorizados. `pairingRequired` es siempre `true` desde el
+Sprint 2.
 
 ## 3. Sobre de mensaje (envelope)
 
@@ -81,9 +90,69 @@ Todos los frames WebSocket usan la misma forma:
 | `ts` | int | Milisegundos desde epoch UTC. |
 | `payload` | object | Datos del tipo. Puede ser `{}`. |
 
-## 4. Tipos de mensaje v1
+## 4. Código QR y claves
 
-### `hello` (celular → PC)
+La PC genera un QR con este formato:
+
+```text
+jscan://pair?d=<base64url(JSON sin relleno)>
+```
+
+El JSON contiene:
+
+| Campo | Descripción |
+|---|---|
+| `v` | Versión del contenido del QR. Actualmente `1`. |
+| `sid` | ID del servidor (el mismo de mDNS y `/health`). |
+| `name` | Nombre visible de la PC. |
+| `host` | IPv4 local que debe usar el celular. |
+| `port` | Puerto WebSocket. |
+| `spk` | Clave pública X25519 del servidor, 32 bytes en base64url. |
+| `tok` | Token de emparejamiento de un solo uso, 32 bytes en base64url. |
+| `exp` | Caducidad del código en milisegundos epoch UTC. |
+
+Reglas:
+
+- La ventana de emparejamiento dura **3 minutos** por defecto.
+- El token es de un solo uso: al aceptar un dispositivo la ventana se cierra y el
+  QR deja de ser válido.
+- La PC pide confirmación al usuario antes de autorizar un dispositivo nuevo. La
+  confirmación caduca en **1 minuto** y, si no hay respuesta, se rechaza.
+- La clave privada X25519 nunca sale del dispositivo.
+
+### Derivación de claves
+
+El secreto compartido es `X25519(privada_local, pública_del_par)`. Sobre él se
+aplican tres derivaciones HKDF-SHA256 independientes:
+
+| Uso | Salt | Info |
+|---|---|---|
+| Emparejamiento | `serverId` UTF-8 | `jscan-pair-v1` |
+| Prueba de identidad | `serverId` UTF-8 | `jscan-auth-v1` |
+| Sesión | nonce de 32 bytes del servidor | `jscan-session-v1\|<serverId>\|<deviceId>` |
+
+Cada conexión autenticada usa un nonce nuevo, así que la clave de sesión cambia
+aunque las identidades sean estáticas.
+
+## 5. Emparejamiento
+
+```text
+Celular                                         PC
+   |  pair_hello {device, publicKey}              |
+   |--------------------------------------------->|
+   |  pair_challenge {nonce, serverId, ...}       |
+   |<---------------------------------------------|
+   |  pair_request {challenge, nonce, box}        |
+   |  (token cifrado con la clave de emparejamiento)
+   |--------------------------------------------->|
+   |                       usuario confirma       |
+   |  pair_accept {deviceId, server, proof}       |
+   |<---------------------------------------------|
+   |  (la PC cierra la sesión)                    |
+   |  hello + challenge + auth (ver sección 6)    |
+```
+
+### `pair_hello` (celular → PC)
 
 ```json
 {
@@ -92,11 +161,125 @@ Todos los frames WebSocket usan la misma forma:
     "name": "Pixel 8",
     "platform": "android",
     "appVersion": "0.1.0"
-  }
+  },
+  "publicKey": "<base64url de 32 bytes>"
 }
 ```
 
-### `hello_ack` (PC → celular)
+La PC solo acepta este mensaje si la ventana de emparejamiento está abierta.
+
+### `pair_challenge` (PC → celular)
+
+```json
+{
+  "nonce": "<base64url de 32 bytes>",
+  "serverId": "3f9a1c2b",
+  "serverName": "DESKTOP-ABC",
+  "protocolVersion": 1,
+  "expiresAt": 1793544180000
+}
+```
+
+### `pair_request` (celular → PC)
+
+```json
+{
+  "challenge": "<nonce del pair_challenge>",
+  "nonce": "<nonce ChaCha20 de 12 bytes>",
+  "box": "<ciphertext||tag en base64url>"
+}
+```
+
+El texto cifrado es el JSON `{"token":"<tok del QR>"}`. Se cifra con la clave de
+emparejamiento y el AAD:
+
+```text
+jscan-pair-v1|<serverId>|<challenge base64url>
+```
+
+La PC verifica el token en tiempo constante, pide confirmación al usuario y, si se
+acepta, guarda el dispositivo (`deviceId`, nombre, plataforma, clave pública,
+fechas). Si el token no coincide responde `invalid_token`; si el usuario rechaza o
+vence la confirmación, `pairing_rejected`.
+
+### `pair_accept` (PC → celular)
+
+```json
+{
+  "deviceId": "a1b2c3d4",
+  "server": {
+    "id": "3f9a1c2b",
+    "name": "DESKTOP-ABC",
+    "platform": "windows",
+    "appVersion": "0.1.0"
+  },
+  "proof": "<HMAC-SHA256 base64url>",
+  "pairedAt": 1793544030000
+}
+```
+
+`proof` autentica a la PC y evita que un intermediario falsifique la aceptación:
+
+```text
+HMAC-SHA256(pairingKey, "accept|<serverId>|<deviceId>|<challenge base64url>")
+```
+
+### `pair_reject` (PC → celular)
+
+```json
+{ "code": "pairing_rejected", "message": "El usuario de la PC rechazó el emparejamiento" }
+```
+
+Después de `pair_accept` o `pair_reject` la PC cierra la conexión. El celular guarda
+la PC y vuelve a conectar con el flujo de autenticación.
+
+## 6. Autenticación y sesión cifrada
+
+```text
+Celular                                      PC
+   |  hello {device, publicKey}                |
+   |------------------------------------------>|
+   |  challenge {nonce, serverId, deviceId}    |
+   |<------------------------------------------|
+   |  auth {proof}                             |
+   |------------------------------------------>|
+   |  auth_ok {server, protocolVersion, ...}   |
+   |<------------------------------------------|  (cifrado)
+   |  encrypted(ping)                          |
+   |------------------------------------------>|
+   |  encrypted(pong)                          |
+   |<------------------------------------------|
+```
+
+### `hello` (celular → PC)
+
+Igual que en el Sprint 1: `device` + `publicKey`. La PC busca el `deviceId` en su
+lista; si no existe o la clave pública no coincide responde `not_paired` y cierra.
+
+### `challenge` (PC → celular)
+
+```json
+{
+  "nonce": "<base64url de 32 bytes>",
+  "serverId": "3f9a1c2b",
+  "deviceId": "a1b2c3d4"
+}
+```
+
+### `auth` (celular → PC)
+
+```json
+{ "proof": "<HMAC-SHA256 base64url>" }
+```
+
+```text
+HMAC-SHA256(authKey, "auth|<serverId>|<deviceId>|<nonce base64url>")
+```
+
+La PC compara en tiempo constante. Si falla responde `bad_proof` y cierra. Si es
+correcta deriva la clave de sesión y responde `auth_ok` ya cifrado.
+
+### `auth_ok` (PC → celular, cifrado)
 
 ```json
 {
@@ -107,17 +290,44 @@ Todos los frames WebSocket usan la misma forma:
     "appVersion": "0.1.0"
   },
   "protocolVersion": 1,
-  "wsPath": "/ws",
-  "pairingRequired": false
+  "wsPath": "/ws"
 }
 ```
 
-`pairingRequired` es siempre `false` en v1; el Sprint 2 lo pondrá en `true` hasta que
-el dispositivo esté emparejado.
+### `encrypted`
 
-### `ping` / `pong`
+Todo mensaje posterior a `auth_ok` viaja dentro de un sobre `encrypted`:
 
-`ping` (cualquier dirección):
+```json
+{
+  "v": 1,
+  "id": "9f1d0c8e4b7a4e6c",
+  "type": "encrypted",
+  "ts": 1793544000000,
+  "payload": {
+    "nonce": "<base64url de 12 bytes>",
+    "box": "<ciphertext||tag en base64url>"
+  }
+}
+```
+
+- Algoritmo: ChaCha20-Poly1305 con la clave de sesión.
+- `box` es el texto cifrado seguido del tag Poly1305 de 16 bytes.
+- AAD fijo: `jscan-encrypted-v1`.
+- El texto plano es un sobre completo (`v`, `id`, `type`, `ts`, `payload`). El
+  sobre exterior reutiliza el `id` interior para facilitar la correlación.
+
+Reglas de la sesión autenticada:
+
+- El servidor **cierra la conexión** si recibe un sobre no cifrado.
+- Un `ping` sin emparejar responde `error` con `not_paired` y cierra la conexión.
+- Cualquier `error` con `unauthorized`, `bad_proof` o `not_paired` también cierra.
+- Revocar un dispositivo en la PC cierra sus sesiones activas y le impide volver a
+  autenticarse.
+
+## 7. `ping` / `pong`
+
+`ping` (cifrado, cualquier dirección):
 
 ```json
 { "nonce": "9f1d0c8e4b7a4e6c" }
@@ -131,53 +341,60 @@ el dispositivo esté emparejado.
 
 El cliente mide el RTT con su propio reloj.
 
-### `error`
+## 8. `error`
 
 ```json
 { "code": "invalid_message", "message": "payload.device is required" }
 ```
 
-Códigos v1: `invalid_message`, `unsupported_version`, `unsupported_type`,
-`invalid_payload`, `internal_error`. En el futuro: `not_paired`, `unauthorized`,
-`checksum_mismatch`, `file_too_large`, `cancelled`.
+Códigos implementados:
 
-## 5. Tipos reservados (no implementados aún)
+| Código | Significado |
+|---|---|
+| `invalid_message` | JSON o sobre mal formado. |
+| `unsupported_version` | `v` distinto de `1`; se cierra la conexión. |
+| `unsupported_type` | Tipo desconocido o fuera de orden. |
+| `invalid_payload` | Faltan campos o tienen un formato inválido. |
+| `internal_error` | Fallo inesperado del servidor. |
+| `not_paired` | El dispositivo no está autorizado. |
+| `unauthorized` | Mensaje no cifrado, MAC inválido o descifrado fallido. |
+| `pairing_closed` | La ventana de emparejamiento está cerrada. |
+| `pairing_expired` | El QR caducó. |
+| `pairing_rejected` | El usuario de la PC rechazó el dispositivo. |
+| `invalid_token` | El token del QR no coincide. |
+| `bad_proof` | La prueba HMAC no es válida. |
+
+Reservados para sprints posteriores: `checksum_mismatch`, `file_too_large`,
+`cancelled`.
+
+## 9. Tipos reservados (no implementados aún)
 
 `text`, `clipboard`, `file_offer`, `file_chunk`, `file_complete`, `cancel`,
-`pair_request`, `pair_accept`, `encrypted`.
+`hello_ack` (obsoleto desde el Sprint 2).
 
 Se reservan para que clientes v1 puedan rechazarlos de forma controlada con
 `unsupported_type` en lugar de romper la conexión.
 
-## 6. Reglas de compatibilidad
+## 10. Reglas de compatibilidad
 
 1. Un cliente que reciba un `v` distinto de 1 debe cerrar la conexión tras enviar
    `error`.
-2. Un tipo desconocido no cierra la conexión: se responde `error` y se continúa.
+2. Un tipo desconocido no cierra la conexión: se responde `error` y se continúa,
+   salvo que viole una regla de seguridad.
 3. Los campos extra en `payload` se ignoran (forward compatibility).
 4. Los `id` de mensaje permiten correlacionar respuestas; no son únicos entre sesiones.
-5. Los límites de tamaño llegan con archivos (Sprint 4). En v1 el frame máximo
-   aceptado es 1 MiB.
+5. En v1 el frame máximo aceptado es 1 MiB.
+6. Desde el Sprint 2 el emparejamiento es obligatorio: no existe un modo "sin
+   seguridad" en la misma versión de protocolo.
 
-## 7. Flujo del Sprint 1
+## 11. Criterio de aceptación del Sprint 2
 
-```text
-Celular                                  PC
-   |  mDNS PTR _jscan._tcp.local (QU)      |
-   |-------------------------------------->|
-   |  PTR + SRV + TXT + A (unicast)        |
-   |<--------------------------------------|
-   |  WebSocket connect /ws                |
-   |-------------------------------------->|
-   |  hello                                |
-   |-------------------------------------->|
-   |  hello_ack                            |
-   |<--------------------------------------|
-   |  ping                                 |
-   |-------------------------------------->|
-   |  pong (RTT medido en el celular)      |
-   |<--------------------------------------|
-```
+Con la PC y el celular en la misma red y sin internet:
 
-**Criterio de aceptación:** con la PC y el celular en la misma red y sin internet, el
-celular lista la PC y recibe un `pong` en menos de 2 s.
+1. La PC muestra un QR de un solo uso.
+2. El celular lo escanea, la PC pide confirmación y guarda el dispositivo.
+3. Las conexiones posteriores se autentican con X25519 y todos los mensajes viajan
+   cifrados.
+4. Un dispositivo no emparejado que intenta `ping`, `hello` con otro ID o enviar
+   mensajes recibe `not_paired` y la conexión se cierra.
+5. La PC puede listar y revocar dispositivos; la revocación corta sus sesiones.

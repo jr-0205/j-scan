@@ -1,12 +1,19 @@
-/// Librería compartida de J-SCAN: protocolo, servidor, cliente y mDNS.
+/// Librería compartida de J-SCAN: protocolo, cifrado, servidor, cliente y mDNS.
 library;
 
 export 'src/client/jscan_client.dart';
+export 'src/crypto/bytes.dart';
+export 'src/crypto/identity.dart';
+export 'src/crypto/pairing_code.dart';
+export 'src/crypto/secure_channel.dart';
 export 'src/discovery/discovered_peer.dart';
 export 'src/discovery/dns.dart';
 export 'src/discovery/mdns_advertiser.dart';
 export 'src/discovery/mdns_browser.dart';
 export 'src/network/network_info.dart';
+export 'src/pairing/paired_device.dart';
+export 'src/pairing/pairing_manager.dart';
+export 'src/pairing/repositories.dart';
 export 'src/protocol/constants.dart';
 export 'src/protocol/device_info.dart';
 export 'src/protocol/messages.dart';

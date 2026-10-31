@@ -18,6 +18,15 @@ abstract final class ProtocolErrorCode {
   static const String unsupportedType = 'unsupported_type';
   static const String invalidPayload = 'invalid_payload';
   static const String internalError = 'internal_error';
+
+  // Sprint 2: emparejamiento y cifrado.
+  static const String notPaired = 'not_paired';
+  static const String unauthorized = 'unauthorized';
+  static const String pairingClosed = 'pairing_closed';
+  static const String pairingExpired = 'pairing_expired';
+  static const String pairingRejected = 'pairing_rejected';
+  static const String invalidToken = 'invalid_token';
+  static const String badProof = 'bad_proof';
 }
 
 /// Fallo al abrir o mantener la conexión WebSocket.

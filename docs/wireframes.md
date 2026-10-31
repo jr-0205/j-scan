@@ -1,61 +1,133 @@
-# Wireframes (Sprint 0)
+# Wireframes (Sprint 2)
 
 Pantallas mínimas acordadas. Los wireframes son de baja fidelidad: definen jerarquía,
-estados y acciones, no el diseño final.
+estados y acciones, no el diseño final. Las pantallas de los sprints 3 a 6 se
+mantienen como referencia.
 
-## 1. Emparejar (Sprint 2)
+## 1. PC · Emparejar dispositivo (Sprint 2)
+
+```text
++------------------------------------------+
+|  J-SCAN  Servidor local      [2 emparejados] |
++------------------------------------------+
+|  (•) Servidor activo        mDNS activo  |
+|  DESKTOP-ABC · 192.168.1.20:47821        |
+|                                          |
+|  Emparejamiento         [Hasta 12:03:40] |
+|  +------------------+  Escanea este QR   |
+|  |                  |  con J-SCAN en el  |
+|  |       QR         |  celular.          |
+|  |                  |                    |
+|  +------------------+  jscan://pair?d=…  |
+|                        [Copiar código]   |
+|                                          |
+|  Dispositivos emparejados            [1] |
+|  Pixel 8 · android · visto 12:00         |
+|                              [Eliminar]  |
++------------------------------------------+
+```
+
+Estados: ventana cerrada · QR abierto con cuenta atrás · esperando confirmación ·
+dispositivo aceptado · error.
+
+## 2. PC · Confirmación de dispositivo nuevo
 
 ```text
 +----------------------------------+
-|  J-SCAN                     [X]  |
-+----------------------------------+
+|           [teléfono + candado]   |
+|   ¿Aceptar este dispositivo?     |
 |                                  |
-|      Escanea este código         |
-|      con tu celular              |
+|   Pixel 8 quiere emparejarse     |
+|   con esta PC.                   |
 |                                  |
-|      +------------------+         |
-|      |                  |         |
-|      |       QR         |         |
-|      |                  |         |
-|      +------------------+         |
+|   Plataforma   android           |
+|   ID           a1b2c3d4          |
+|   Solicitud    12:00:03          |
 |                                  |
-|      jscan://3f9a1c2b@           |
-|      192.168.1.20:47821          |
+|   Acepta solo si tú abriste el   |
+|   emparejamiento y reconoces     |
+|   este dispositivo.              |
 |                                  |
-|  [ Copiar dirección ]            |
+|   [ Rechazar ]      [ Aceptar ]  |
 +----------------------------------+
 ```
 
-Estados: esperando escaneo · dispositivo detectado · confirmar/denegar (Sprint 2).
+La confirmación caduca en 1 minuto y se rechaza automáticamente.
 
-## 2. Inicio / PC conectada
+## 3. Celular · Descubrimiento y emparejamiento
 
 ```text
 +----------------------------------+
-|  J-SCAN                    [≡]   |
+|  J-SCAN              [🛡 1] [↻]  |
 +----------------------------------+
-|  Estado                          |
-|  (•) Servidor activo             |
-|  Puerto 47821 · 192.168.1.20     |
-|  Descubrimiento mDNS activo      |
+|  Misma red Wi-Fi                 |
+|  Emparejamiento se hace una vez  |
 |                                  |
-|  Dispositivos conectados         |
+|  Emparejar con la PC             |
+|  En la PC pulsa «Emparejar       |
+|  dispositivo».                   |
+|  [ Escanear QR ] [ Pegar código ]|
+|                                  |
+|  1 PC emparejada       [ Ver ]   |
+|                                  |
+|  PCs en la red        1 encontrada|
 |  +----------------------------+  |
-|  | Pixel 8 · android          |  |
-|  | 192.168.1.35 · hace 2 s    |  |
+|  | 🔒 DESKTOP-ABC             |  |
+|  | 192.168.1.20:47821 ·       |  |
+|  | emparejada                 |  |
+|  |                 [Conectar] |  |
 |  +----------------------------+  |
-|                                  |
-|  Actividad                       |
-|  12:00:03  ping de Pixel 8 (12  |
-|            ms)                    |
-|                                  |
-|  [ Compartir portapapeles ]      |
 +----------------------------------+
 ```
 
-Estados: servidor arrancando · activo · error (puerto ocupado).
+Estados: preparando identidad · buscando · sin PCs · PC sin emparejar (**Emparejar**)
+· PC emparejada (**Conectar**) · prueba en curso · error.
 
-## 3. Enviar (celular)
+## 4. Celular · Escanear QR
+
+```text
++----------------------------------+
+|  <  Escanear QR de la PC   [⚡]  |
++----------------------------------+
+|                                  |
+|        +----------------+        |
+|        |                |        |
+|        |   vista cámara |        |
+|        |                |        |
+|        +----------------+        |
+|                                  |
+|   Apunta al QR que muestra       |
+|   J-SCAN en la PC                |
+|                                  |
+|   [ Pegar código en su lugar ]   |
++----------------------------------+
+```
+
+Estados: pidiendo permiso · escaneando · emparejando (espera confirmación de la PC) ·
+error de cámara con opción de pegar el código.
+
+## 5. Celular · PCs emparejadas
+
+```text
++----------------------------------+
+|  <  PCs emparejadas        [QR]  |
++----------------------------------+
+|  Solo puedes enviar a estas PCs. |
+|                                  |
+|  +----------------------------+  |
+|  | 🖥 DESKTOP-ABC             |  |
+|  | 192.168.1.20:47821 ·       |  |
+|  | emparejada 31/10/2026      |  |
+|  | [Probar conexión]  [🗑]    |  |
+|  | 🔒 3 ms de promedio        |  |
+|  +----------------------------+  |
++----------------------------------+
+```
+
+Estados: vacío · con PCs · probando · sesión cifrada · PC inalcanzable · confirmación
+para olvidar.
+
+## 6. Enviar (Sprint 3)
 
 ```text
 +----------------------------------+
@@ -76,7 +148,7 @@ Estados: servidor arrancando · activo · error (puerto ocupado).
 
 Estados: sin conexión · enviando · completado · error con reintento.
 
-## 4. Escáner (Sprint 5)
+## 7. Escáner (Sprint 5)
 
 ```text
 +----------------------------------+
@@ -98,7 +170,7 @@ Estados: sin conexión · enviando · completado · error con reintento.
 
 Estados: detectando bordes · capturando · revisando páginas.
 
-## 5. Historial
+## 8. Historial (Sprint 3)
 
 ```text
 +----------------------------------+
