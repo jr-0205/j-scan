@@ -1,4 +1,4 @@
-# Cómo ejecutar J-SCAN (Sprint 0 + 1 + 2)
+# Cómo ejecutar J-SCAN (Sprint 0 + 1 + 2 + 3)
 
 ## Requisitos
 
@@ -38,7 +38,10 @@ La app:
 3. muestra la IP, el puerto, las sesiones, los dispositivos emparejados y la actividad;
 4. genera el QR de emparejamiento con **Emparejar dispositivo**;
 5. pide confirmación cuando un celular nuevo intenta emparejarse;
-6. se oculta a la bandeja del sistema al cerrar la ventana (salir desde el menú
+6. muestra la bandeja **Textos y portapapeles** con el historial SQLite, permite
+   copiar, borrar o vaciar entradas y, si está activo, copia automáticamente el
+   último texto recibido al portapapeles de Windows;
+7. se oculta a la bandeja del sistema al cerrar la ventana (salir desde el menú
    del icono).
 
 Para compilar el `.exe`:
@@ -80,6 +83,33 @@ En la pantalla principal:
 - el icono de escudo abre **PCs emparejadas**, donde puedes probar o olvidar una PC.
 
 La primera vez Android pedirá permiso de cámara. Si lo deniegas, usa **Pegar código**.
+
+## Enviar texto y portapapeles (Sprint 3)
+
+Con una PC ya emparejada:
+
+1. En el celular pulsa el icono de avión de papel o la tarjeta **Texto y
+   portapapeles**.
+2. Escribe un mensaje o pega una URL y pulsa **Enviar texto**. La pantalla muestra
+   la confirmación (`text_ack`) con el tiempo que tardó la PC.
+3. **Enviar portapapeles** toma lo que tengas copiado y lo manda como
+   `clipboard`; **Pegar portapapeles** solo lo trae al campo de texto.
+4. En la PC, la tarjeta **Textos y portapapeles** lista cada mensaje con su
+   remitente y la hora. Con **Copiar automáticamente al portapapeles** activo, el
+   último texto queda listo para pegar en Windows. El historial se guarda en
+   `history.sqlite` (hasta 500 entradas).
+
+### Compartir desde otras apps
+
+Desde Chrome, YouTube o cualquier app con **Compartir → J-SCAN**:
+
+- si hay **una sola PC emparejada**, el texto se envía al instante y aparece en la
+  PC;
+- si hay cero o varias PCs, la app muestra una tarjeta con el texto compartido para
+  que elijas el destino.
+
+El filtro de Android solo acepta `text/plain`; archivos e imágenes llegan en el
+Sprint 4.
 
 ## Verificar desde la terminal
 
@@ -123,11 +153,11 @@ Debe incluir `"pairingRequired": true`.
 ## Pruebas
 
 ```bash
-# Protocolo, cifrado, emparejamiento, servidor/cliente y mDNS E2E
+# Protocolo, cifrado, emparejamiento, servidor/cliente, mDNS E2E e historial
 cd packages/jscan_core
 dart test
 
-# Widgets
+# Widgets y SQLite
 cd apps/desktop_app && flutter test
 cd ../mobile_app && flutter test
 
@@ -138,7 +168,10 @@ flutter analyze         # en cada app
 
 La prueba `test/mdns_test.dart` levanta un servidor, lo anuncia por mDNS, lo descubre
 con un navegador real, empareja un cliente y hace un ping cifrado. Es la verificación
-automática del criterio del Sprint 2.
+automática del criterio del Sprint 2. `packages/jscan_core/test/server_client_test.dart`
+cubre el envío cifrado de `text`/`clipboard`, su rechazo sin emparejar y el límite de
+64 KiB; `apps/desktop_app/test/sqlite_history_test.dart` comprueba el historial SQLite
+real sobre `winsqlite3.dll`.
 
 ## Problemas frecuentes
 
@@ -152,12 +185,18 @@ automática del criterio del Sprint 2.
 | `not_paired` al conectar | La PC revocó el dispositivo o cambió su identidad | Volver a emparejar |
 | `bad_proof` o `unauthorized` | Claves desincronizadas o mensaje manipulado | Olvidar la PC en el celular y emparejar de nuevo |
 | La cámara no abre | Permiso denegado o sin cámara | Revisar permisos de Android o usar **Pegar código** |
+| «No se pudo guardar el mensaje» | La carpeta de datos no es escribible o SQLite falló | La app cae a `history.json`; revisar permisos de la carpeta |
+| El texto no aparece en la PC | La PC está en otra red o el dispositivo fue revocado | Revisar la misma Wi-Fi y volver a emparejar |
+| «Compartir» no muestra J-SCAN | Android aún no registró el intent | Reinstalar/actualizar el APK y reiniciar el celular |
 
 ## Estructura del monorepo
 
-- `packages/jscan_core`: protocolo, cifrado, servidor (shelf), cliente WebSocket y mDNS.
-- `apps/desktop_app`: UI de Windows, QR, confirmación, bandeja y control del servidor.
-- `apps/mobile_app`: descubrimiento, emparejamiento, lista de PCs y ping cifrado.
-- `docs/protocol.md`: contrato del protocolo v1 y del Sprint 2.
+- `packages/jscan_core`: protocolo, cifrado, servidor (shelf), cliente WebSocket,
+  mDNS e historial (`HistoryRepository`, JSON en memoria).
+- `apps/desktop_app`: UI de Windows, QR, confirmación, bandeja, control del servidor
+  e historial SQLite (`winsqlite3.dll`).
+- `apps/mobile_app`: descubrimiento, emparejamiento, lista de PCs, ping cifrado,
+  envío de texto/portapapeles y recepción de «Compartir».
+- `docs/protocol.md`: contrato del protocolo v1 y criterios de los sprints 2 y 3.
 - `docs/architecture.md`: decisiones técnicas.
 - `docs/wireframes.md`: pantallas de los sprints 2 a 6.

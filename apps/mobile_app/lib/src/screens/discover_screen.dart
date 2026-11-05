@@ -6,6 +6,7 @@ import '../widgets/probe_result_view.dart';
 import 'pair_code_dialog.dart';
 import 'paired_servers_screen.dart';
 import 'qr_scan_screen.dart';
+import 'send_text_screen.dart';
 
 class DiscoverScreen extends StatelessWidget {
   const DiscoverScreen({super.key, required this.controller});
@@ -52,6 +53,15 @@ class DiscoverScreen extends StatelessWidget {
               ],
             ),
             actions: <Widget>[
+              if (paired.isNotEmpty)
+                IconButton(
+                  tooltip: 'Enviar texto',
+                  onPressed: () => SendTextScreen.open(
+                    context,
+                    controller: controller,
+                  ),
+                  icon: const Icon(Icons.send_outlined),
+                ),
               IconButton(
                 tooltip: 'PCs emparejadas',
                 onPressed: () => PairedServersScreen.open(
@@ -96,6 +106,8 @@ class DiscoverScreen extends StatelessWidget {
                   ),
                   if (paired.isNotEmpty) ...<Widget>[
                     const SizedBox(height: 12),
+                    _SendTextCard(controller: controller),
+                    const SizedBox(height: 12),
                     _PairedSummaryCard(
                       controller: controller,
                       onOpen: () => PairedServersScreen.open(
@@ -103,6 +115,10 @@ class DiscoverScreen extends StatelessWidget {
                         controller: controller,
                       ),
                     ),
+                  ],
+                  if (controller.pendingSharedText != null) ...<Widget>[
+                    const SizedBox(height: 12),
+                    _SharedTextCard(controller: controller),
                   ],
                   const SizedBox(height: 20),
                   _PeersHeader(count: controller.peers.length),
@@ -123,9 +139,9 @@ class DiscoverScreen extends StatelessWidget {
                 ],
                 const SizedBox(height: 24),
                 Text(
-                  'Sprint 2 · emparejamiento por QR, autenticación X25519 y '
-                  'mensajes cifrados con ChaCha20-Poly1305. Un celular sin '
-                  'emparejar no puede enviar nada.',
+                  'Sprint 3 · texto y portapapeles cifrados con '
+                  'ChaCha20-Poly1305, historial en SQLite en la PC y envío '
+                  'directo desde el menú «Compartir».',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.outline,
@@ -353,6 +369,103 @@ class _PairedSummaryCard extends StatelessWidget {
         trailing: TextButton(
           onPressed: onOpen,
           child: const Text('Ver'),
+        ),
+      ),
+    );
+  }
+}
+
+class _SendTextCard extends StatelessWidget {
+  const _SendTextCard({required this.controller});
+
+  final DiscoveryController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final target = controller.pairedServers.first;
+    return Card(
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        leading: Icon(Icons.send, color: theme.colorScheme.primary),
+        title: const Text('Texto y portapapeles'),
+        subtitle: Text(
+          'Envía un mensaje o lo que tengas copiado a ${target.name}.',
+        ),
+        trailing: FilledButton.tonal(
+          onPressed: () => SendTextScreen.open(context, controller: controller),
+          child: const Text('Abrir'),
+        ),
+      ),
+    );
+  }
+}
+
+class _SharedTextCard extends StatelessWidget {
+  const _SharedTextCard({required this.controller});
+
+  final DiscoveryController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final text = controller.pendingSharedText ?? '';
+    final preview = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return Card(
+      color: theme.colorScheme.tertiaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Icon(
+                  Icons.ios_share,
+                  color: theme.colorScheme.onTertiaryContainer,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Texto compartido desde otra app',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: theme.colorScheme.onTertiaryContainer,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              preview.length > 160 ? '${preview.substring(0, 160)}…' : preview,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onTertiaryContainer,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: <Widget>[
+                FilledButton(
+                  onPressed: () {
+                    final pending = controller.pendingSharedText;
+                    controller.clearPendingSharedText();
+                    SendTextScreen.open(
+                      context,
+                      controller: controller,
+                      initialText: pending,
+                    );
+                  },
+                  child: const Text('Elegir PC y enviar'),
+                ),
+                TextButton(
+                  onPressed: controller.clearPendingSharedText,
+                  child: const Text('Descartar'),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

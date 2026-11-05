@@ -1,3 +1,4 @@
+import '../history/history_entry.dart';
 import '../pairing/paired_device.dart';
 import 'client_session.dart';
 
@@ -36,6 +37,13 @@ final class ServerPingReceived extends ServerEvent {
 
   final ClientSession session;
   final String nonce;
+}
+
+/// La PC recibió un `text` o `clipboard` cifrado y lo guardó en el historial.
+final class ServerMessageReceived extends ServerEvent {
+  const ServerMessageReceived(this.entry);
+
+  final HistoryEntry entry;
 }
 
 /// La ventana de emparejamiento se abrió o cerró.

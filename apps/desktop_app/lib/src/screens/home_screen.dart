@@ -4,6 +4,7 @@ import 'package:jscan_core/jscan_core.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../server_controller.dart';
+import 'inbox_card.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.controller});
@@ -109,6 +110,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   _StatusCard(controller: controller),
                   const SizedBox(height: 16),
                   _PairingCard(controller: controller),
+                  const SizedBox(height: 16),
+                  InboxCard(controller: controller),
                   const SizedBox(height: 16),
                   _PairedDevicesCard(controller: controller),
                   const SizedBox(height: 16),
@@ -740,9 +743,8 @@ class _SprintNote extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Text(
-      'Sprint 2 · emparejamiento por QR, autenticación X25519 y cifrado '
-      'ChaCha20-Poly1305. Los dispositivos no emparejados no pueden enviar '
-      'mensajes.',
+      'Sprint 3 · texto y portapapeles cifrados de extremo a extremo, con '
+      'historial en SQLite y copia automática en Windows.',
       textAlign: TextAlign.center,
       style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: Theme.of(context).colorScheme.outline,

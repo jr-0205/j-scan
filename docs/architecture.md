@@ -30,6 +30,7 @@ plataforma (cámara, almacenamiento seguro, QR).
 ┌────────────── mobile_app ──────────────┐   ┌────────────── desktop_app ─────────────┐
 │ DiscoverScreen · QrScanScreen          │   │ HomeScreen · TrayController            │
 │ PairedServersScreen · PairCodeDialog   │   │ QR · confirmación · dispositivos       │
+│ SendTextScreen · ShareIntentChannel    │   │ InboxCard · historial · portapapeles   │
 │ Riverpod (identidad, PCs, sesiones)    │   │ Riverpod (servidor, sesiones, eventos) │
 └───────────────────┬────────────────────┘   └───────────────────┬────────────────────┘
                     │                                            │
@@ -37,7 +38,7 @@ plataforma (cámara, almacenamiento seguro, QR).
 ┌──────────────────────────── jscan_core ────────────────────────────────────────────┐
 │ MdnsBrowser   JScanClient   │   LocalServer   MdnsAdvertiser   Protocolo (JSON)    │
 │ (dart:io UDP) (WebSocket)   │   (shelf + shelf_web_socket)                        │
-│                             │   PairingManager · SessionCipher                    │
+│                             │   PairingManager · SessionCipher · HistoryRepository│
 │ Crypto: X25519 · HKDF-SHA256 · ChaCha20-Poly1305 · HMAC-SHA256                    │
 └────────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -64,6 +65,22 @@ unauthenticated ──hello válido──> challenge ──auth válido──> a
 Solo los mensajes `pair_hello`, `pair_request`, `hello` y `auth` se aceptan en
 texto plano y solo en el estado correspondiente. En `authenticated` todo debe llegar
 como `encrypted`; de lo contrario la sesión se cierra.
+
+## Módulos del Sprint 3
+
+| Módulo | Responsabilidad |
+|---|---|
+| `text/text_payload.dart` | Valida `text`/`clipboard` (64 KiB máximo) y detecta enlaces. |
+| `history/history_entry.dart` | Modelo `HistoryEntry` (`text`/`clipboard`, remitente y fecha). |
+| `history/history_repository.dart` | Contrato `HistoryRepository` + implementaciones en memoria y JSON. |
+| `LocalServer` (`text`/`clipboard`) | Guarda cada mensaje cifrado y responde `text_ack`/`clipboard_ack`. |
+| `desktop_app/history/sqlite_history_repository.dart` | Historial SQLite (`winsqlite3.dll`) con tope de 500 entradas. |
+| `mobile_app/platform/share_intent.dart` | Canal `jscan/share` con `MainActivity` para `ACTION_SEND`. |
+| `SendTextScreen` | Envío de texto libre, pegado y envío del portapapeles. |
+
+El servidor acepta `text` y `clipboard` únicamente después de `auth_ok`. Cada
+mensaje produce un `ServerMessageReceived` con la entrada ya persistida, de modo
+que la UI de la PC no necesita consultar el historial en cada evento.
 
 ## Descubrimiento sin plugins
 
@@ -97,9 +114,14 @@ añadir `multicast_lock` en `mobile_app` sin cambiar el protocolo.
 | Identidad X25519 | `identity.json` en el directorio de soporte de la app | `flutter_secure_storage` |
 | Dispositivos autorizados | `paired_devices.json` | — |
 | PCs autorizadas | — | `flutter_secure_storage` |
+| Textos y portapapeles | `history.sqlite` (SQLite) | memoria de la sesión |
+| Preferencias | `settings.json` (copia automática) | — |
 
-Los IDs de servidor y dispositivo son estables desde el Sprint 2. `drift` entra en
-el Sprint 3 para el historial de transferencias.
+Los IDs de servidor y dispositivo son estables desde el Sprint 2. En el Sprint 3
+el historial usa SQLite a través del paquete `sqlite3`, cargando `winsqlite3.dll`
+(el SQLite incluido en Windows 11). Así no se necesita el plugin nativo
+`sqlite3_flutter_libs`, que exige modo desarrollador para enlazar plugins. Si la
+carga falla, la PC cae automáticamente a `history.json`.
 
 ## Seguridad
 
@@ -111,3 +133,16 @@ el Sprint 3 para el historial de transferencias.
 - Comparaciones de tokens, MACs y claves públicas en tiempo constante.
 - Revocar un dispositivo cierra sus sesiones activas y borra su autorización.
 - Criterio del Sprint 2: un dispositivo no emparejado no puede enviar nada.
+
+Sprint 3:
+
+- `text` y `clipboard` solo se procesan dentro de un sobre `encrypted`; fuera de él
+  se responde `not_paired` y se cierra la conexión.
+- El texto se valida antes de tocar el disco (no vacío, máximo 64 KiB en UTF-8).
+- El historial SQLite se abre con `winsqlite3.dll` del propio Windows; no se
+  descargan binarios nativos ni se ejecuta SQL construido con datos del celular
+  (todas las consultas usan parámetros).
+- Compartir desde Android captura solo `ACTION_SEND` con `text/plain`; el resto de
+  tipos se ignora y el intent se consume una sola vez para evitar duplicados.
+- Copiar al portapapeles es una preferencia local de la PC; el celular no puede
+  activarla ni leer el portapapeles del PC.

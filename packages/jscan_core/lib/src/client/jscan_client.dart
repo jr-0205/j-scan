@@ -14,12 +14,26 @@ import '../protocol/constants.dart';
 import '../protocol/device_info.dart';
 import '../protocol/messages.dart';
 import '../protocol/protocol_exception.dart';
+import '../text/text_payload.dart';
 
 final class _PendingRequest {
   _PendingRequest(this.expected, this.completer);
 
   final MessageType expected;
   final Completer<Envelope> completer;
+}
+
+/// Confirmación de entrega de un `text` o `clipboard`.
+final class MessageDelivery {
+  const MessageDelivery({
+    required this.messageId,
+    required this.historyId,
+    required this.receivedAt,
+  });
+
+  final String messageId;
+  final String historyId;
+  final DateTime receivedAt;
 }
 
 /// Resultado de emparejar un celular con una PC.
@@ -279,6 +293,71 @@ final class JScanClient {
     return stopwatch.elapsed;
   }
 
+  /// Envía un `text` cifrado y espera la confirmación `text_ack`.
+  Future<MessageDelivery> sendText(
+    String text, {
+    TextKind? kind,
+    Duration? timeout,
+  }) {
+    return _sendTextMessage(
+      MessageType.text,
+      MessageType.textAck,
+      text,
+      kind: kind,
+      timeout: timeout,
+    );
+  }
+
+  /// Envía el contenido del portapapeles con `clipboard` + `clipboard_ack`.
+  Future<MessageDelivery> sendClipboard(
+    String text, {
+    TextKind? kind,
+    Duration? timeout,
+  }) {
+    return _sendTextMessage(
+      MessageType.clipboard,
+      MessageType.clipboardAck,
+      text,
+      kind: kind,
+      timeout: timeout,
+    );
+  }
+
+  Future<MessageDelivery> _sendTextMessage(
+    MessageType type,
+    MessageType ackType,
+    String text, {
+    TextKind? kind,
+    Duration? timeout,
+  }) async {
+    if (_cipher == null) {
+      throw const JScanConnectionException(
+        'La sesión no está autenticada; empareja el dispositivo primero',
+      );
+    }
+
+    final payload = TextPayload.parse(<String, Object?>{
+      'text': text,
+      if (kind != null) 'kind': kind.wire,
+    });
+
+    final ack = await _request(
+      type,
+      payload.toJson(),
+      expected: ackType,
+      timeout: timeout,
+    );
+
+    final receivedAt = ack.intField('receivedAt');
+    return MessageDelivery(
+      messageId: ack.id,
+      historyId: ack.stringField('historyId') ?? '',
+      receivedAt: receivedAt == null
+          ? DateTime.now()
+          : DateTime.fromMillisecondsSinceEpoch(receivedAt),
+    );
+  }
+
   /// Envía un mensaje cifrado sin esperar respuesta (para tipos futuros).
   String send(
     MessageType type, {
@@ -315,6 +394,7 @@ final class JScanClient {
     Map<String, Object?> payload, {
     required MessageType expected,
     bool secure = true,
+    Duration? timeout,
   }) async {
     if (_closed) {
       throw const JScanConnectionException('La conexión está cerrada');
@@ -332,7 +412,7 @@ final class JScanClient {
     }
 
     return completer.future.timeout(
-      timeout,
+      timeout ?? this.timeout,
       onTimeout: () {
         _pending.remove(envelope.id);
         throw JScanConnectionException(

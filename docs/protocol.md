@@ -341,7 +341,54 @@ Reglas de la sesión autenticada:
 
 El cliente mide el RTT con su propio reloj.
 
-## 8. `error`
+## 8. `text` y `clipboard` (Sprint 3)
+
+Texto libre y portapapeles. Viajan **siempre dentro de un sobre `encrypted`**;
+un `text` o `clipboard` sin cifrar se rechaza con `not_paired` y se cierra la
+conexión.
+
+`text` (celular → PC):
+
+```json
+{
+  "text": "Hola desde el móvil",
+  "kind": "plain"
+}
+```
+
+`clipboard` (celular → PC) usa el mismo payload:
+
+```json
+{
+  "text": "https://example.com/guia",
+  "kind": "link"
+}
+```
+
+Reglas:
+
+- `text` es obligatorio, no vacío y de hasta 64 KiB en UTF-8
+  (`JScanDefaults.maxTextBytes`). Si se excede, se responde
+  `error`/`invalid_payload` y la sesión continúa.
+- `kind` es opcional (`plain` o `link`); si falta, la PC lo infiere: una única
+  URL `http(s)` se marca como `link`.
+- La PC guarda cada mensaje en su historial persistente y lo emite a la UI.
+- La PC confirma con el mismo `id` del mensaje:
+
+`text_ack` / `clipboard_ack` (PC → celular, cifrado):
+
+```json
+{
+  "historyId": "9f1d0c8e4b7a4e6c",
+  "kind": "link",
+  "receivedAt": 1793544000123
+}
+```
+
+`historyId` identifica la entrada guardada en la PC y `receivedAt` es la hora
+del servidor. El celular considera entregado el mensaje al recibir el ack.
+
+## 9. `error`
 
 ```json
 { "code": "invalid_message", "message": "payload.device is required" }
@@ -367,15 +414,15 @@ Códigos implementados:
 Reservados para sprints posteriores: `checksum_mismatch`, `file_too_large`,
 `cancelled`.
 
-## 9. Tipos reservados (no implementados aún)
+## 10. Tipos reservados (no implementados aún)
 
-`text`, `clipboard`, `file_offer`, `file_chunk`, `file_complete`, `cancel`,
+`file_offer`, `file_chunk`, `file_complete`, `cancel`,
 `hello_ack` (obsoleto desde el Sprint 2).
 
 Se reservan para que clientes v1 puedan rechazarlos de forma controlada con
 `unsupported_type` en lugar de romper la conexión.
 
-## 10. Reglas de compatibilidad
+## 11. Reglas de compatibilidad
 
 1. Un cliente que reciba un `v` distinto de 1 debe cerrar la conexión tras enviar
    `error`.
@@ -386,8 +433,11 @@ Se reservan para que clientes v1 puedan rechazarlos de forma controlada con
 5. En v1 el frame máximo aceptado es 1 MiB.
 6. Desde el Sprint 2 el emparejamiento es obligatorio: no existe un modo "sin
    seguridad" en la misma versión de protocolo.
+7. `text` y `clipboard` solo se aceptan dentro de una sesión autenticada y
+   cifrada; un cliente v1 que no los implemente puede responder
+   `unsupported_type` y seguir conectado.
 
-## 11. Criterio de aceptación del Sprint 2
+## 12. Criterio de aceptación del Sprint 2
 
 Con la PC y el celular en la misma red y sin internet:
 
@@ -398,3 +448,19 @@ Con la PC y el celular en la misma red y sin internet:
 4. Un dispositivo no emparejado que intenta `ping`, `hello` con otro ID o enviar
    mensajes recibe `not_paired` y la conexión se cierra.
 5. La PC puede listar y revocar dispositivos; la revocación corta sus sesiones.
+
+## 13. Criterio de aceptación del Sprint 3
+
+Con la PC y el celular emparejados en la misma red y sin internet:
+
+1. El celular escribe texto libre y la PC lo muestra en su bandeja en menos de
+   2 segundos, con confirmación `text_ack`.
+2. El botón «Enviar portapapeles» envía el contenido copiado en el celular y la
+   PC lo guarda como `clipboard`.
+3. Compartir un enlace desde el navegador del celular con J-SCAN lo envía
+   automáticamente si hay una sola PC emparejada.
+4. La PC guarda todo en su historial SQLite (`history.sqlite`) y puede copiar,
+   borrar o vaciar entradas.
+5. Con «Copiar automáticamente» activo, el último texto queda en el
+   portapapeles de Windows.
+6. Sin emparejar, el servidor responde `not_paired` y cierra la conexión.

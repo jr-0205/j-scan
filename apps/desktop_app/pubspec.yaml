@@ -14,6 +14,7 @@ dependencies:
     path: ../../packages/jscan_core
   path_provider: ^2.1.6
   qr_flutter: ^4.1.0
+  sqlite3: ^2.4.6
   tray_manager: ^0.8.0
   window_manager: ^0.5.2
 

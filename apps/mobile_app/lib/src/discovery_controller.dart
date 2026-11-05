@@ -34,6 +34,42 @@ final class PeerProbeResult {
   }
 }
 
+/// Resultado de enviar un texto o el portapapeles a una PC.
+final class SendResult {
+  const SendResult({
+    required this.ok,
+    this.error,
+    this.delivery,
+    this.serverName,
+    this.elapsed = Duration.zero,
+  });
+
+  final bool ok;
+  final String? error;
+  final MessageDelivery? delivery;
+  final String? serverName;
+  final Duration elapsed;
+
+  int get elapsedMs => elapsed.inMilliseconds;
+}
+
+/// Entrada del historial local de envíos (solo en memoria).
+final class SentMessage {
+  const SentMessage({
+    required this.text,
+    required this.kind,
+    required this.serverName,
+    required this.sentAt,
+    required this.result,
+  });
+
+  final String text;
+  final HistoryKind kind;
+  final String serverName;
+  final DateTime sentAt;
+  final SendResult result;
+}
+
 /// Descubrimiento mDNS, emparejamiento por QR y conexiones cifradas.
 final class DiscoveryController extends ChangeNotifier {
   DiscoveryController({
@@ -64,6 +100,11 @@ final class DiscoveryController extends ChangeNotifier {
   DateTime? lastScan;
   List<DiscoveredPeer> peers = const <DiscoveredPeer>[];
   List<PairedServer> pairedServers = const <PairedServer>[];
+  List<SentMessage> sentMessages = const <SentMessage>[];
+
+  /// Texto compartido desde otra app cuando no se puede enviar automáticamente.
+  String? pendingSharedText;
+
   bool _ready = false;
 
   bool get ready => _ready;
@@ -313,6 +354,134 @@ final class DiscoveryController extends ChangeNotifier {
     } finally {
       await client?.close();
     }
+  }
+
+  /// Envía un texto (o el portapapeles) cifrado a una PC emparejada.
+  ///
+  /// Abre una sesión nueva, autentica con X25519, envía el mensaje y espera la
+  /// confirmación del servidor. La conexión se cierra al terminar.
+  Future<SendResult> sendTextTo(
+    PairedServer server,
+    String text, {
+    bool fromClipboard = false,
+  }) async {
+    await initialize(scan: false);
+    final identity = _identity;
+    final kind = fromClipboard ? HistoryKind.clipboard : HistoryKind.text;
+    final serverName = server.name;
+    final stopwatch = Stopwatch()..start();
+
+    if (identity == null) {
+      return _recordFailure(
+        text: text,
+        kind: kind,
+        serverName: serverName,
+        error: 'La identidad del celular no está disponible',
+        stopwatch: stopwatch,
+      );
+    }
+    if (text.trim().isEmpty) {
+      return _recordFailure(
+        text: text,
+        kind: kind,
+        serverName: serverName,
+        error: 'No hay texto para enviar',
+        stopwatch: stopwatch,
+      );
+    }
+
+    JScanClient? client;
+    try {
+      client = await JScanClient.connectPaired(
+        server: server,
+        identity: identity,
+        device: _deviceInfo(identity),
+      );
+      final delivery = fromClipboard
+          ? await client.sendClipboard(text)
+          : await client.sendText(text);
+      stopwatch.stop();
+
+      final result = SendResult(
+        ok: true,
+        delivery: delivery,
+        serverName: client.serverInfo?.name ?? serverName,
+        elapsed: stopwatch.elapsed,
+      );
+      _recordSent(text, kind, result);
+      return result;
+    } on ProtocolException catch (error) {
+      return _recordFailure(
+        text: text,
+        kind: kind,
+        serverName: serverName,
+        error: '${error.code}: ${error.message}',
+        stopwatch: stopwatch,
+      );
+    } catch (error) {
+      return _recordFailure(
+        text: text,
+        kind: kind,
+        serverName: serverName,
+        error: '$error',
+        stopwatch: stopwatch,
+      );
+    } finally {
+      await client?.close();
+    }
+  }
+
+  /// Envía automáticamente un texto recibido por «Compartir».
+  ///
+  /// Si hay exactamente una PC emparejada se envía al instante; con cero o
+  /// varias se guarda en [pendingSharedText] para que la UI pregunte.
+  Future<SendResult?> sendSharedText(String text) async {
+    await initialize(scan: false);
+    if (pairedServers.length != 1) {
+      pendingSharedText = text;
+      notifyListeners();
+      return null;
+    }
+    pendingSharedText = null;
+    return sendTextTo(pairedServers.first, text);
+  }
+
+  void clearPendingSharedText() {
+    if (pendingSharedText == null) return;
+    pendingSharedText = null;
+    notifyListeners();
+  }
+
+  SendResult _recordFailure({
+    required String text,
+    required HistoryKind kind,
+    required String serverName,
+    required String error,
+    required Stopwatch stopwatch,
+  }) {
+    stopwatch.stop();
+    final result = SendResult(
+      ok: false,
+      error: error,
+      serverName: serverName,
+      elapsed: stopwatch.elapsed,
+    );
+    _recordSent(text, kind, result);
+    return result;
+  }
+
+  void _recordSent(String text, HistoryKind kind, SendResult result) {
+    sentMessages = <SentMessage>[
+      SentMessage(
+        text: text,
+        kind: kind,
+        serverName: result.serverName ?? 'PC',
+        sentAt: DateTime.now(),
+        result: result,
+      ),
+      ...sentMessages,
+    ].take(30).toList();
+    notifyListeners();
   }
 
   Future<void> removeServer(PairedServer server) async {

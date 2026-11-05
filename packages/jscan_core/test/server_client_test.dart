@@ -268,5 +268,122 @@ void main() {
 
       await subscription.cancel();
     });
+
+    test('envía texto cifrado, lo guarda y confirma con text_ack', () async {
+      final events = <ServerEvent>[];
+      final subscription = server.events.listen(events.add);
+      final paired = await pairPhone();
+      final client = await JScanClient.connectPaired(
+        server: paired,
+        identity: phoneIdentity,
+        device: const DeviceInfo(
+          id: 'phone1',
+          name: 'Pixel de prueba',
+          platform: 'android',
+        ),
+      );
+
+      final delivery = await client.sendText('Hola desde el celular');
+      expect(delivery.messageId, isNotEmpty);
+      expect(delivery.historyId, isNotEmpty);
+
+      final history = await server.listHistory();
+      expect(history, hasLength(1));
+      final entry = history.single;
+      expect(entry.text, 'Hola desde el celular');
+      expect(entry.kind, HistoryKind.text);
+      expect(entry.fromDeviceId, 'phone1');
+      expect(entry.fromDeviceName, 'Pixel de prueba');
+
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      expect(events.whereType<ServerMessageReceived>(), hasLength(1));
+
+      await client.close();
+      await subscription.cancel();
+    });
+
+    test('envía el portapapeles y lo distingue del texto libre', () async {
+      final paired = await pairPhone();
+      final client = await JScanClient.connectPaired(
+        server: paired,
+        identity: phoneIdentity,
+        device: const DeviceInfo(
+          id: 'phone1',
+          name: 'Pixel de prueba',
+          platform: 'android',
+        ),
+      );
+
+      final delivery = await client.sendClipboard('https://jscan.local/guia');
+      expect(delivery.historyId, isNotEmpty);
+
+      final entry = (await server.listHistory()).single;
+      expect(entry.kind, HistoryKind.clipboard);
+      expect(entry.text, 'https://jscan.local/guia');
+
+      await client.close();
+    });
+
+    test('un dispositivo sin emparejar no puede enviar texto', () async {
+      final channel = IOWebSocketChannel.connect(
+        Uri.parse('ws://127.0.0.1:${server.port}/ws'),
+      );
+      await channel.ready;
+
+      final first = Completer<Envelope>();
+      final closed = Completer<void>();
+      final subscription = channel.stream.listen(
+        (data) {
+          if (!first.isCompleted) {
+            first.complete(Envelope.decode(data));
+          }
+        },
+        onDone: () {
+          if (!closed.isCompleted) closed.complete();
+        },
+        onError: (Object error, StackTrace stackTrace) {
+          if (!closed.isCompleted) closed.complete();
+        },
+      );
+
+      channel.sink.add(
+        jsonEncode(<String, Object?>{
+          'v': 1,
+          'id': 'rawtext',
+          'type': 'text',
+          'ts': DateTime.now().millisecondsSinceEpoch,
+          'payload': <String, Object?>{'text': 'intruso'},
+        }),
+      );
+
+      final error = await first.future.timeout(const Duration(seconds: 2));
+      expect(error.type, MessageType.error.wire);
+      expect(error.stringField('code'), ProtocolErrorCode.notPaired);
+
+      await closed.future.timeout(const Duration(seconds: 2));
+      expect(await server.listHistory(), isEmpty);
+      await subscription.cancel();
+    });
+
+    test('rechaza localmente un texto que supera el máximo', () async {
+      final paired = await pairPhone();
+      final client = await JScanClient.connectPaired(
+        server: paired,
+        identity: phoneIdentity,
+        device: const DeviceInfo(
+          id: 'phone1',
+          name: 'Pixel de prueba',
+          platform: 'android',
+        ),
+      );
+
+      await expectLater(
+        client.sendText('x' * (JScanDefaults.maxTextBytes + 1)),
+        throwsA(isA<ProtocolException>()),
+      );
+
+      expect(await server.listHistory(), isEmpty);
+      await client.close();
+    });
   });
 }

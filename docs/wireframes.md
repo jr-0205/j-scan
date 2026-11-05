@@ -1,4 +1,4 @@
-# Wireframes (Sprint 2)
+# Wireframes (Sprint 2 + Sprint 3)
 
 Pantallas mínimas acordadas. Los wireframes son de baja fidelidad: definen jerarquía,
 estados y acciones, no el diseño final. Las pantallas de los sprints 3 a 6 se
@@ -127,28 +127,73 @@ error de cámara con opción de pegar el código.
 Estados: vacío · con PCs · probando · sesión cifrada · PC inalcanzable · confirmación
 para olvidar.
 
-## 6. Enviar (Sprint 3)
+## 6. Celular · Enviar texto y portapapeles (Sprint 3)
 
 ```text
 +----------------------------------+
-|  <   Enviar a DESKTOP-ABC        |
+|  <   Enviar a la PC        [📋]  |
 +----------------------------------+
-|  [ Texto ] [ Archivos ] [ Fotos ]|
+|  PC de destino                   |
+|  [ 🖥 DESKTOP-ABC · 192.168.1.20 ]|
 |                                  |
+|  Texto o enlace                  |
 |  +----------------------------+  |
-|  | Escribe o pega aquí...     |  |
-|  |                            |  |
+|  | Hola, mira esto:           |  |
+|  | https://ejemplo.com        |  |
 |  +----------------------------+  |
 |                                  |
-|  [        Enviar        ]        |
+|  [ Enviar texto ]                |
+|  [ Pegar portapapeles ]          |
+|  [ Enviar portapapeles ]         |
 |                                  |
-|  Progreso: ▓▓▓▓▓▓░░░░  62 %      |
+|  ✅ Entregado a DESKTOP-ABC      |
+|     Confirmado en 140 ms         |
+|                                  |
+|  Enviados en esta sesión     2   |
+|  12:04  Texto · DESKTOP-ABC 140ms|
+|  12:03  Portapapeles · 98 ms     |
 +----------------------------------+
 ```
 
-Estados: sin conexión · enviando · completado · error con reintento.
+Estados: sin PCs emparejadas · listo · enviando · entregado (con `historyId`) ·
+error de red o `not_paired`.
 
-## 7. Escáner (Sprint 5)
+## 7. Celular · Texto compartido desde otra app (Sprint 3)
+
+```text
++----------------------------------+
+|  J-SCAN              [🛡 1] [↻]  |
++----------------------------------+
+|  Texto compartido desde otra app |
+|  https://ejemplo.com/articulo    |
+|  [ Elegir PC y enviar ] [Descartar]|
++----------------------------------+
+```
+
+Se envía solo si hay exactamente una PC emparejada; si no, aparece esta tarjeta.
+
+## 8. PC · Textos y portapapeles (Sprint 3)
+
+```text
++--------------------------------------------------+
+|  ✉ Textos y portapapeles                     [3] |
+|  [x] Copiar automáticamente al portapapeles      |
+|  -------------------------------------------------|
+|  📋 "https://ejemplo.com"                        |
+|     Pixel 8 · portapapeles · 03/11 12:03         |
+|                              [Copiar] [Eliminar] |
+|  📝 "Hola desde el celular"                      |
+|     Pixel 8 · texto · 03/11 12:00                |
+|                              [Copiar] [Eliminar] |
+|                                                  |
+|  [ Copiar último ]   [ Vaciar historial ]        |
++--------------------------------------------------+
+```
+
+Estados: vacío · con entradas · copiado · historial vaciado. El historial persiste
+en `history.sqlite` con un máximo de 500 entradas.
+
+## 9. Escáner (Sprint 5)
 
 ```text
 +----------------------------------+
@@ -169,26 +214,3 @@ Estados: sin conexión · enviando · completado · error con reintento.
 ```
 
 Estados: detectando bordes · capturando · revisando páginas.
-
-## 8. Historial (Sprint 3)
-
-```text
-+----------------------------------+
-|  Historial              [Filtro] |
-+----------------------------------+
-|  Hoy                             |
-|  +----------------------------+  |
-|  | 12:00  Texto               |  |
-|  | "https://ejemplo.com"      |  |
-|  | desde Pixel 8              |  |
-|  +----------------------------+  |
-|  +----------------------------+  |
-|  | 11:42  Archivo             |  |
-|  | video.mp4 · 1.2 GB · OK    |  |
-|  +----------------------------+  |
-|                                  |
-|  [        Limpiar        ]       |
-+----------------------------------+
-```
-
-Estados: vacío · con elementos · limpiando.

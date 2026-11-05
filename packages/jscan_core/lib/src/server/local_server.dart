@@ -11,6 +11,8 @@ import '../crypto/bytes.dart';
 import '../crypto/identity.dart';
 import '../crypto/pairing_code.dart';
 import '../crypto/secure_channel.dart';
+import '../history/history_entry.dart';
+import '../history/history_repository.dart';
 import '../network/network_info.dart';
 import '../pairing/paired_device.dart';
 import '../pairing/pairing_manager.dart';
@@ -19,6 +21,7 @@ import '../protocol/constants.dart';
 import '../protocol/device_info.dart';
 import '../protocol/messages.dart';
 import '../protocol/protocol_exception.dart';
+import '../text/text_payload.dart';
 import '../util/ids.dart';
 import 'client_session.dart';
 import 'server_events.dart';
@@ -44,6 +47,7 @@ final class LocalServer {
   LocalServer._({
     required this.identity,
     required PairedDeviceRepository devices,
+    required HistoryRepository history,
     required this.name,
     required this.appVersion,
     PairingConfirmation? onPairingRequest,
@@ -51,6 +55,7 @@ final class LocalServer {
     Duration pairingConfirmationTimeout =
         JScanDefaults.pairingConfirmationTimeout,
   })  : _devices = devices,
+        _history = history,
         startedAt = DateTime.now() {
     _pairing = PairingManager(
       identity: identity,
@@ -66,6 +71,7 @@ final class LocalServer {
   static Future<LocalServer> start({
     required LocalIdentity identity,
     required PairedDeviceRepository pairedDevices,
+    HistoryRepository? history,
     int port = JScanDefaults.port,
     String? name,
     String appVersion = '0.1.0',
@@ -78,6 +84,7 @@ final class LocalServer {
     final server = LocalServer._(
       identity: identity,
       devices: pairedDevices,
+      history: history ?? InMemoryHistoryRepository(),
       name: name ?? Platform.localHostname,
       appVersion: appVersion,
       onPairingRequest: onPairingRequest,
@@ -111,6 +118,7 @@ final class LocalServer {
   final DateTime startedAt;
 
   final PairedDeviceRepository _devices;
+  final HistoryRepository _history;
   late final PairingManager _pairing;
   late final HttpServer _httpServer;
   late bool _includeLoopback;
@@ -172,6 +180,14 @@ final class LocalServer {
   }
 
   Future<List<PairedDevice>> listPairedDevices() => _devices.all();
+
+  /// Historial persistido de textos y portapapeles recibidos.
+  Future<List<HistoryEntry>> listHistory({int limit = 100}) =>
+      _history.recent(limit: limit);
+
+  Future<bool> deleteHistoryEntry(String id) => _history.remove(id);
+
+  Future<void> clearHistory() => _history.clear();
 
   /// Revoca un dispositivo. Sus sesiones activas se cierran de inmediato.
   Future<bool> removePairedDevice(String deviceId) async {
@@ -246,6 +262,7 @@ final class LocalServer {
 
     await _httpServer.close(force: true);
     await _events.close();
+    await _history.close();
   }
 
   Handler _buildHandler(Handler wsHandler) {
@@ -418,6 +435,8 @@ final class LocalServer {
         await _handleAuth(runtime, outer);
         break;
       case MessageType.ping:
+      case MessageType.text:
+      case MessageType.clipboard:
         await _rejectNotPaired(runtime, outer, channel);
         break;
       case MessageType.helloAck:
@@ -428,6 +447,8 @@ final class LocalServer {
       case MessageType.pairChallenge:
       case MessageType.pairAccept:
       case MessageType.pairReject:
+      case MessageType.textAck:
+      case MessageType.clipboardAck:
       case MessageType.encrypted:
         _sendError(
           channel,
@@ -748,6 +769,10 @@ final class LocalServer {
         );
         _emit(ServerPingReceived(session: updated, nonce: nonce));
         break;
+      case MessageType.text:
+      case MessageType.clipboard:
+        await _handleIncomingText(runtime, envelope);
+        break;
       case MessageType.error:
         // El cliente informa de un error propio; no requiere respuesta.
         break;
@@ -758,6 +783,56 @@ final class LocalServer {
           ProtocolErrorCode.unsupportedType,
           'Tipo no soportado en una sesión autenticada: ${envelope.type}',
         );
+    }
+  }
+
+  Future<void> _handleIncomingText(
+    _SessionRuntime runtime,
+    Envelope envelope,
+  ) async {
+    final channel = _channels[runtime.session.id];
+    if (channel == null) return;
+
+    final isClipboard = envelope.knownType == MessageType.clipboard;
+    final kind = isClipboard ? HistoryKind.clipboard : HistoryKind.text;
+
+    try {
+      final payload = TextPayload.parse(envelope.payload);
+      final now = DateTime.now();
+      final entry = HistoryEntry(
+        id: newId(10),
+        kind: kind,
+        text: payload.text,
+        receivedAt: now,
+        fromDeviceId: runtime.session.pairedDeviceId,
+        fromDeviceName: runtime.session.displayName,
+      );
+
+      await _history.save(entry);
+      runtime.session = runtime.session.copyWith(lastSeen: now);
+      _emit(ServerMessageReceived(entry));
+
+      await _sendSecure(
+        runtime,
+        Envelope.create(
+          isClipboard ? MessageType.clipboardAck : MessageType.textAck,
+          id: envelope.id,
+          payload: <String, Object?>{
+            'historyId': entry.id,
+            'kind': payload.kind.wire,
+            'receivedAt': now.millisecondsSinceEpoch,
+          },
+        ),
+      );
+    } on ProtocolException catch (error) {
+      _sendError(channel, envelope.id, error.code, error.message);
+    } catch (error) {
+      _sendError(
+        channel,
+        envelope.id,
+        ProtocolErrorCode.internalError,
+        'No se pudo guardar el mensaje: $error',
+      );
     }
   }
 

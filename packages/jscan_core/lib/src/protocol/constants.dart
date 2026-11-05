@@ -27,6 +27,9 @@ abstract final class JScanDefaults {
   /// Tamaño máximo de un frame de texto aceptado (1 MiB).
   static const int maxFrameBytes = 1024 * 1024;
 
+  /// Tamaño máximo del contenido útil de `text`/`clipboard` (64 KiB).
+  static const int maxTextBytes = 64 * 1024;
+
   /// Versión del contenido del QR de emparejamiento.
   static const int pairingCodeVersion = 1;
 

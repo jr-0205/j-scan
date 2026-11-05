@@ -103,18 +103,29 @@ Si quieres, puedo pasar todo esto a un documento editable, o detallar las tareas
 
 # Estado del repositorio
 
-Sprint 0, Sprint 1 y Sprint 2 implementados:
+Sprint 0, Sprint 1, Sprint 2 y Sprint 3 implementados:
 
 - monorepo con Melos (`packages/jscan_core`, `apps/desktop_app`, `apps/mobile_app`);
-- protocolo v1 documentado en [docs/protocol.md](docs/protocol.md), incluido el
-  emparejamiento y el cifrado;
+- protocolo v1 documentado en [docs/protocol.md](docs/protocol.md), incluidos el
+  emparejamiento, el cifrado y los mensajes `text`/`clipboard`;
 - servidor local con puerto fijo, mDNS, bandeja del sistema y UI de actividad;
 - app móvil que descubre PCs, lista IP/puerto y prueba la conexión con ping;
 - **Sprint 2**: QR de un solo uso, identidades X25519 persistentes, HKDF-SHA256,
   ChaCha20-Poly1305 en todos los mensajes autenticados, confirmación en la PC y
   gestión/revocación de dispositivos emparejados;
 - un dispositivo no emparejado recibe `not_paired` y la conexión se cierra;
-- CI en GitHub Actions y pruebas automáticas (incluida la prueba mDNS E2E con
-  emparejamiento y ping cifrado).
+- **Sprint 3**: envío cifrado de texto libre y portapapeles desde el celular,
+  confirmación `text_ack`/`clipboard_ack`, recepción de `ACTION_SEND` («Compartir»),
+  historial SQLite en la PC (máximo 500 entradas) y copia automática al portapapeles
+  de Windows;
+- CI en GitHub Actions y pruebas automáticas (incluidas la prueba mDNS E2E con
+  emparejamiento y ping cifrado, el envío cifrado de texto y el historial SQLite).
+
+> El instalador de Windows todavía no existe: eso corresponde al Sprint 7. Por
+> ahora la app de escritorio se ejecuta como build portable desde
+> `apps/desktop_app/build/windows/x64/runner/Release/desktop_app.exe`.
 
 Guía de ejecución: [docs/getting-started.md](docs/getting-started.md).
+
+
+ opencode -s ses_e6ca0e5e8ffeEncD11sHKrx3Zs

@@ -2,8 +2,12 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:jscan_core/jscan_core.dart';
 import 'package:path_provider/path_provider.dart';
+
+import 'history/sqlite_history_repository.dart';
+import 'settings/app_settings.dart';
 
 enum ServerStatus { idle, starting, running, error }
 
@@ -32,6 +36,10 @@ final class ServerController extends ChangeNotifier {
   List<ClientSession> sessions = const <ClientSession>[];
   List<ActivityEntry> activity = const <ActivityEntry>[];
   List<PairedDevice> pairedDevices = const <PairedDevice>[];
+  List<HistoryEntry> history = const <HistoryEntry>[];
+
+  /// Si está activo, cada texto recibido se copia al portapapeles de Windows.
+  bool copyToClipboard = true;
 
   PairingCode? pairingCode;
   bool pairingOpen = false;
@@ -41,6 +49,8 @@ final class ServerController extends ChangeNotifier {
   LocalServer? _server;
   MdnsAdvertiser? _advertiser;
   StreamSubscription<ServerEvent>? _events;
+  SettingsStore? _settingsStore;
+  DesktopSettings _settings = const DesktopSettings();
   Timer? _pairingTimer;
   Timer? _pairingDecisionTimer;
   Completer<bool>? _pairingDecision;
@@ -75,10 +85,17 @@ final class ServerController extends ChangeNotifier {
       final devices = JsonPairedDeviceRepository(
         File('${support.path}${separator}paired_devices.json'),
       );
+      final settingsStore = SettingsStore(
+        File('${support.path}${separator}settings.json'),
+      );
+      _settingsStore = settingsStore;
+      _settings = await settingsStore.load();
+      copyToClipboard = _settings.copyToClipboard;
 
       final server = await LocalServer.start(
         identity: identity,
         pairedDevices: devices,
+        history: _openHistory(support),
         onPairingRequest: _confirmPairing,
       );
       _server = server;
@@ -99,6 +116,7 @@ final class ServerController extends ChangeNotifier {
       primaryAddress = await primaryLocalAddress();
       sessions = server.sessions;
       pairedDevices = await server.listPairedDevices();
+      history = await server.listHistory();
       status = ServerStatus.running;
       _addActivity('Servidor escuchando en el puerto ${server.port}');
       _addActivity('Anuncio mDNS activo');
@@ -182,6 +200,58 @@ final class ServerController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Copia una entrada del historial al portapapeles.
+  Future<void> copyEntry(HistoryEntry entry) => _copyText(entry.text);
+
+  /// Activa o desactiva la copia automática y la persiste en `settings.json`.
+  Future<void> setCopyToClipboard(bool value) async {
+    copyToClipboard = value;
+    _settings = _settings.copyWith(copyToClipboard: value);
+    await _settingsStore?.save(_settings);
+    notifyListeners();
+  }
+
+  /// Elimina una entrada concreta del historial (SQLite y memoria).
+  Future<void> deleteHistoryEntry(HistoryEntry entry) async {
+    final server = _server;
+    if (server == null) return;
+    await server.deleteHistoryEntry(entry.id);
+    history = history.where((item) => item.id != entry.id).toList();
+    notifyListeners();
+  }
+
+  /// Vacía el historial completo.
+  Future<void> clearHistory() async {
+    final server = _server;
+    if (server == null) return;
+    await server.clearHistory();
+    history = const <HistoryEntry>[];
+    _addActivity('Historial vaciado');
+    notifyListeners();
+  }
+
+  HistoryRepository _openHistory(Directory support) {
+    final separator = Platform.pathSeparator;
+    try {
+      return SqliteHistoryRepository.open(
+        File('${support.path}${separator}history.sqlite'),
+      );
+    } catch (error) {
+      _addActivity('SQLite no disponible ($error); historial en JSON');
+      return JsonHistoryRepository(
+        File('${support.path}${separator}history.json'),
+      );
+    }
+  }
+
+  Future<void> _copyText(String text) async {
+    try {
+      await Clipboard.setData(ClipboardData(text: text));
+    } catch (error) {
+      _addActivity('No se pudo copiar al portapapeles: $error');
+    }
+  }
+
   Future<bool> _confirmPairing(PairingRequest request) {
     final completer = Completer<bool>();
     _pairingDecision = completer;
@@ -226,6 +296,20 @@ final class ServerController extends ChangeNotifier {
         break;
       case ServerPingReceived(:final session):
         _addActivity('Ping de ${session.displayName}');
+        break;
+      case ServerMessageReceived(:final entry):
+        history = <HistoryEntry>[entry, ...history]
+            .take(HistoryRepository.maxEntries)
+            .toList();
+        final label =
+            entry.kind == HistoryKind.clipboard ? 'Portapapeles' : 'Texto';
+        _addActivity(
+          '$label de ${entry.fromDeviceName ?? 'un dispositivo'}: '
+          '${entry.preview(max: 60)}',
+        );
+        if (copyToClipboard) {
+          unawaited(_copyText(entry.text));
+        }
         break;
       case ServerPairingWindowChanged(:final open):
         if (!open) {

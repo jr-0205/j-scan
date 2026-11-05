@@ -25,9 +25,13 @@ enum MessageType {
   // Cifrado de extremo a extremo.
   encrypted('encrypted'),
 
-  // Reservados para sprints posteriores.
+  // Sprint 3: texto y portapapeles.
   text('text'),
+  textAck('text_ack'),
   clipboard('clipboard'),
+  clipboardAck('clipboard_ack'),
+
+  // Reservados para sprints posteriores.
   fileOffer('file_offer'),
   fileChunk('file_chunk'),
   fileComplete('file_complete'),
