@@ -123,6 +123,22 @@ el historial usa SQLite a través del paquete `sqlite3`, cargando `winsqlite3.dl
 `sqlite3_flutter_libs`, que exige modo desarrollador para enlazar plugins. Si la
 carga falla, la PC cae automáticamente a `history.json`.
 
+## Distribución en Windows
+
+Se eligió **Inno Setup 6** en lugar de MSIX:
+
+- genera un único `setup.exe` que no exige firma, certificado instalado ni modo
+  desarrollador;
+- se instala por usuario en `%LOCALAPPDATA%\Programs\J-SCAN` sin UAC;
+- reutiliza tal cual el build portable de Flutter (DLLs + `data/`);
+- incluye desinstalador, accesos directos y arranque opcional con Windows.
+
+El script `apps/desktop_app/tool/build_installer.ps1` lee la versión de
+`pubspec.yaml`, compila `flutter build windows --release`, ejecuta `ISCC.exe` y
+valida el resultado con una instalación y desinstalación silenciosa en una carpeta
+temporal. MSIX queda como opción futura si se necesita distribución desde la
+Microsoft Store o actualizaciones administradas.
+
 ## Seguridad
 
 - Claves privadas X25519 estáticas por instalación; nunca se transmiten.

@@ -64,7 +64,8 @@ final class SqliteHistoryRepository implements HistoryRepository {
 
   @override
   Future<HistoryEntry?> find(String id) async {
-    final rows = _db.select('SELECT * FROM history WHERE id = ?', <Object?>[id]);
+    final rows =
+        _db.select('SELECT * FROM history WHERE id = ?', <Object?>[id]);
     if (rows.isEmpty) return null;
     return _toEntry(rows.first);
   }

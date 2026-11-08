@@ -118,12 +118,16 @@ Sprint 0, Sprint 1, Sprint 2 y Sprint 3 implementados:
   confirmación `text_ack`/`clipboard_ack`, recepción de `ACTION_SEND` («Compartir»),
   historial SQLite en la PC (máximo 500 entradas) y copia automática al portapapeles
   de Windows;
+- instalador de Windows con Inno Setup (por usuario, sin administrador) generado por
+  `apps/desktop_app/tool/build_installer.ps1`;
 - CI en GitHub Actions y pruebas automáticas (incluidas la prueba mDNS E2E con
   emparejamiento y ping cifrado, el envío cifrado de texto y el historial SQLite).
 
-> El instalador de Windows todavía no existe: eso corresponde al Sprint 7. Por
-> ahora la app de escritorio se ejecuta como build portable desde
-> `apps/desktop_app/build/windows/x64/runner/Release/desktop_app.exe`.
+> **Instalador de Windows:** `apps/desktop_app/build/installer/JScan-Setup-0.1.0.exe`
+> (Inno Setup, instalación por usuario sin administrador). Se regenera con
+> `powershell -ExecutionPolicy Bypass -File apps/desktop_app/tool/build_installer.ps1`.
+> El build portable sigue disponible en
+> `apps/desktop_app/build/windows/x64/runner/Release/`.
 
 Guía de ejecución: [docs/getting-started.md](docs/getting-started.md).
 

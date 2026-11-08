@@ -7,7 +7,8 @@ import 'package:flutter/services.dart';
 /// En el lado nativo, `MainActivity` captura `ACTION_SEND` con `text/plain` y
 /// lo entrega por el canal `jscan/share`.
 final class ShareIntentChannel {
-  ShareIntentChannel({MethodChannel channel = const MethodChannel('jscan/share')})
+  ShareIntentChannel(
+      {MethodChannel channel = const MethodChannel('jscan/share')})
       : _channel = channel {
     _channel.setMethodCallHandler(_handleCall);
   }

@@ -54,7 +54,8 @@ void main() {
 
       final recent = await repo.recent();
       expect(recent.map((e) => e.id), <String>['c', 'b', 'a']);
-      expect((await repo.recent(limit: 2)).map((e) => e.id), <String>['c', 'b']);
+      expect(
+          (await repo.recent(limit: 2)).map((e) => e.id), <String>['c', 'b']);
 
       expect(await repo.find('b'), isNotNull);
       expect(await repo.remove('b'), isTrue);

@@ -53,6 +53,41 @@ flutter build windows --release
 El artefacto queda en
 `apps/desktop_app/build/windows/x64/runner/Release/desktop_app.exe`.
 
+### Instalador de Windows (recomendado)
+
+El instalador usa **Inno Setup 6** y se genera por usuario, sin pedir permisos de
+administrador:
+
+```bash
+# Instalar Inno Setup una sola vez
+winget install JRSoftware.InnoSetup
+
+# Desde la raíz del repo: compila la app y el instalador
+powershell -ExecutionPolicy Bypass -File apps/desktop_app/tool/build_installer.ps1
+```
+
+El resultado queda en:
+
+```text
+apps/desktop_app/build/installer/JScan-Setup-0.1.0.exe
+```
+
+El script lee la versión de `pubspec.yaml`, compila la app, genera el instalador y
+hace una instalación/desinstalación silenciosa de prueba en una carpeta temporal.
+Con `-SkipBuild` reutiliza el build existente y con `-NoTestInstall` omite la
+prueba.
+
+El instalador:
+
+- copia la app a `%LOCALAPPDATA%\Programs\J-SCAN`;
+- crea accesos en el menú Inicio y, opcionalmente, en el escritorio;
+- puede iniciar J-SCAN al iniciar sesión (desmarcado por defecto);
+- registra el desinstalador en **Aplicaciones instaladas**;
+- cierra una instancia abierta antes de actualizar.
+
+La primera vez que se abre, Windows Firewall preguntará si J-SCAN puede escuchar
+en la red local. Hay que permitirlo para TCP 47821 y mDNS (UDP 5353).
+
 ## Emparejar el celular (Sprint 2)
 
 1. En la PC pulsa **Emparejar dispositivo**. Aparece un QR válido durante 3 minutos.
@@ -188,13 +223,16 @@ real sobre `winsqlite3.dll`.
 | «No se pudo guardar el mensaje» | La carpeta de datos no es escribible o SQLite falló | La app cae a `history.json`; revisar permisos de la carpeta |
 | El texto no aparece en la PC | La PC está en otra red o el dispositivo fue revocado | Revisar la misma Wi-Fi y volver a emparejar |
 | «Compartir» no muestra J-SCAN | Android aún no registró el intent | Reinstalar/actualizar el APK y reiniciar el celular |
+| `ISCC.exe` no encontrado al generar el instalador | Inno Setup no está instalado | `winget install JRSoftware.InnoSetup` |
+| Windows muestra «aplicación desconocida» al abrir el instalador | El `.exe` no está firmado | Es esperado sin certificado de code signing; usar «Más información → Ejecutar de todas formas» |
 
 ## Estructura del monorepo
 
 - `packages/jscan_core`: protocolo, cifrado, servidor (shelf), cliente WebSocket,
   mDNS e historial (`HistoryRepository`, JSON en memoria).
 - `apps/desktop_app`: UI de Windows, QR, confirmación, bandeja, control del servidor
-  e historial SQLite (`winsqlite3.dll`).
+  e historial SQLite (`winsqlite3.dll`). El instalador está en `installer/jscan.iss`
+  y se compila con `tool/build_installer.ps1`.
 - `apps/mobile_app`: descubrimiento, emparejamiento, lista de PCs, ping cifrado,
   envío de texto/portapapeles y recepción de «Compartir».
 - `docs/protocol.md`: contrato del protocolo v1 y criterios de los sprints 2 y 3.

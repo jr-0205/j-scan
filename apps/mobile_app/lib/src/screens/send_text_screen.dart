@@ -134,7 +134,8 @@ class _SendTextScreenState extends State<SendTextScreen> {
       listenable: widget.controller,
       builder: (context, _) {
         final servers = widget.controller.pairedServers;
-        if (servers.isNotEmpty && !servers.any((s) => s.serverId == _serverId)) {
+        if (servers.isNotEmpty &&
+            !servers.any((s) => s.serverId == _serverId)) {
           _serverId = servers.first.serverId;
         }
         return Scaffold(
@@ -366,7 +367,9 @@ class _ResultCard extends StatelessWidget {
     final theme = Theme.of(context);
     final ok = result.ok;
     return Card(
-      color: ok ? theme.colorScheme.secondaryContainer : theme.colorScheme.errorContainer,
+      color: ok
+          ? theme.colorScheme.secondaryContainer
+          : theme.colorScheme.errorContainer,
       child: ListTile(
         leading: Icon(
           ok ? Icons.check_circle : Icons.error_outline,
