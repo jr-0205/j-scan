@@ -1,3 +1,4 @@
+import '../files/file_transfer.dart';
 import '../history/history_entry.dart';
 import '../pairing/paired_device.dart';
 import 'client_session.dart';
@@ -44,6 +45,31 @@ final class ServerMessageReceived extends ServerEvent {
   const ServerMessageReceived(this.entry);
 
   final HistoryEntry entry;
+}
+
+/// Avance de una transferencia de archivo (aproximadamente cada 1 %).
+final class ServerFileProgress extends ServerEvent {
+  const ServerFileProgress(this.progress);
+
+  final FileTransferProgress progress;
+}
+
+/// Un archivo quedó completo, verificado y guardado en disco.
+final class ServerFileReceived extends ServerEvent {
+  const ServerFileReceived(this.file);
+
+  final ReceivedFile file;
+}
+
+/// El celular canceló una transferencia y la PC borró su parte.
+final class ServerFileCanceled extends ServerEvent {
+  const ServerFileCanceled({
+    required this.transferId,
+    required this.name,
+  });
+
+  final String transferId;
+  final String name;
 }
 
 /// La ventana de emparejamiento se abrió o cerró.

@@ -103,11 +103,11 @@ Si quieres, puedo pasar todo esto a un documento editable, o detallar las tareas
 
 # Estado del repositorio
 
-Sprint 0, Sprint 1, Sprint 2 y Sprint 3 implementados:
+Sprint 0, Sprint 1, Sprint 2, Sprint 3 y Sprint 4 implementados:
 
 - monorepo con Melos (`packages/jscan_core`, `apps/desktop_app`, `apps/mobile_app`);
 - protocolo v1 documentado en [docs/protocol.md](docs/protocol.md), incluidos el
-  emparejamiento, el cifrado y los mensajes `text`/`clipboard`;
+  emparejamiento, el cifrado, `text`/`clipboard` y la transferencia de archivos;
 - servidor local con puerto fijo, mDNS, bandeja del sistema y UI de actividad;
 - app móvil que descubre PCs, lista IP/puerto y prueba la conexión con ping;
 - **Sprint 2**: QR de un solo uso, identidades X25519 persistentes, HKDF-SHA256,
@@ -118,10 +118,16 @@ Sprint 0, Sprint 1, Sprint 2 y Sprint 3 implementados:
   confirmación `text_ack`/`clipboard_ack`, recepción de `ACTION_SEND` («Compartir»),
   historial SQLite en la PC (máximo 500 entradas) y copia automática al portapapeles
   de Windows;
+- **Sprint 4**: envío por partes con progreso, cancelación y verificación SHA-256;
+  reanudación desde `.jscan-partial` tras cortar la conexión; selección múltiple de
+  archivos/fotos/videos en el celular; carpeta de destino configurable y recordada en
+  la PC; notificación al terminar; «Compartir» de archivos en Android y servicio en
+  primer plano para envíos largos (video de 1 GB);
 - instalador de Windows con Inno Setup (por usuario, sin administrador) generado por
   `apps/desktop_app/tool/build_installer.ps1`;
 - CI en GitHub Actions y pruebas automáticas (incluidas la prueba mDNS E2E con
-  emparejamiento y ping cifrado, el envío cifrado de texto y el historial SQLite).
+  emparejamiento y ping cifrado, el envío cifrado de texto, el historial SQLite y la
+  transferencia de archivos con reanudación y hash).
 
 > **Instalador de Windows:** `apps/desktop_app/build/installer/JScan-Setup-0.1.0.exe`
 > (Inno Setup, instalación por usuario sin administrador). Se regenera con

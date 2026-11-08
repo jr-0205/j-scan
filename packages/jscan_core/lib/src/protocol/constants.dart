@@ -30,6 +30,18 @@ abstract final class JScanDefaults {
   /// Tamaño máximo del contenido útil de `text`/`clipboard` (64 KiB).
   static const int maxTextBytes = 64 * 1024;
 
+  /// Tamaño máximo de un archivo transferido (8 GiB).
+  static const int maxFileBytes = 8 * 1024 * 1024 * 1024;
+
+  /// Trozo mínimo aceptado en `file_chunk` (16 KiB).
+  static const int minFileChunkBytes = 16 * 1024;
+
+  /// Trozo máximo aceptado en `file_chunk`, limitado por [maxFrameBytes].
+  static const int maxFileChunkBytes = 512 * 1024;
+
+  /// Trozo recomendado por defecto (256 KiB).
+  static const int fileChunkBytes = 256 * 1024;
+
   /// Versión del contenido del QR de emparejamiento.
   static const int pairingCodeVersion = 1;
 

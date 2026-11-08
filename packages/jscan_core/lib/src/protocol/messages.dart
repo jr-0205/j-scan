@@ -31,10 +31,13 @@ enum MessageType {
   clipboard('clipboard'),
   clipboardAck('clipboard_ack'),
 
-  // Reservados para sprints posteriores.
+  // Sprint 4: archivos y multimedia.
   fileOffer('file_offer'),
+  fileAccept('file_accept'),
   fileChunk('file_chunk'),
+  fileAck('file_ack'),
   fileComplete('file_complete'),
+  fileDone('file_done'),
   cancel('cancel');
 
   const MessageType(this.wire);

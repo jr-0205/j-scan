@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:jscan_core/jscan_core.dart';
 
+import 'platform/foreground_service.dart';
 import 'storage/mobile_store.dart';
 
 enum ScanStatus { idle, scanning, ready, error }
@@ -70,6 +72,80 @@ final class SentMessage {
   final SendResult result;
 }
 
+enum FileTaskStatus {
+  queued,
+  hashing,
+  sending,
+  completed,
+  failed,
+  canceled,
+}
+
+/// Una transferencia de archivo en curso o terminada.
+final class FileSendTask {
+  FileSendTask({
+    required this.id,
+    required this.path,
+    required this.name,
+    required this.size,
+    required this.serverId,
+    required this.serverName,
+  }) : totalBytes = size;
+
+  final String id;
+  final String path;
+  final String name;
+  final int size;
+  final String serverId;
+  final String serverName;
+
+  FileTaskStatus status = FileTaskStatus.queued;
+  int sentBytes = 0;
+  int totalBytes;
+  String? sha256;
+  String? error;
+  DateTime? finishedAt;
+
+  /// El usuario pidió cancelar; el envío lo detecta antes del próximo bloque.
+  bool cancelRequested = false;
+
+  bool get isActive =>
+      status == FileTaskStatus.queued ||
+      status == FileTaskStatus.hashing ||
+      status == FileTaskStatus.sending;
+
+  double get fraction {
+    if (totalBytes <= 0) return 0;
+    final value = sentBytes / totalBytes;
+    return value < 0 ? 0 : (value > 1 ? 1 : value);
+  }
+
+  int get percent => (fraction * 100).round();
+
+  String get readableSize => formatFileSize(size);
+
+  String get statusLabel => switch (status) {
+        FileTaskStatus.queued => 'En cola',
+        FileTaskStatus.hashing => 'Calculando SHA-256',
+        FileTaskStatus.sending => cancelRequested ? 'Cancelando…' : 'Enviando',
+        FileTaskStatus.completed => 'Recibido por la PC',
+        FileTaskStatus.failed => 'Error',
+        FileTaskStatus.canceled => 'Cancelado',
+      };
+}
+
+String formatFileSize(int bytes) {
+  const units = <String>['B', 'KB', 'MB', 'GB', 'TB'];
+  var value = bytes.toDouble();
+  var unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  final decimals = unit == 0 ? 0 : (value >= 100 ? 0 : 1);
+  return '${value.toStringAsFixed(decimals)} ${units[unit]}';
+}
+
 /// Descubrimiento mDNS, emparejamiento por QR y conexiones cifradas.
 final class DiscoveryController extends ChangeNotifier {
   DiscoveryController({
@@ -101,11 +177,23 @@ final class DiscoveryController extends ChangeNotifier {
   List<DiscoveredPeer> peers = const <DiscoveredPeer>[];
   List<PairedServer> pairedServers = const <PairedServer>[];
   List<SentMessage> sentMessages = const <SentMessage>[];
+  List<FileSendTask> fileTasks = const <FileSendTask>[];
 
   /// Texto compartido desde otra app cuando no se puede enviar automáticamente.
   String? pendingSharedText;
 
+  /// Archivos compartidos desde otra app pendientes de elegir PC.
+  List<String> pendingSharedFiles = const <String>[];
+
+  final Queue<FileSendTask> _fileQueue = Queue<FileSendTask>();
+  final ForegroundTransferService _foreground = ForegroundTransferService();
+  bool _processingFile = false;
+  int _taskCounter = 0;
+
   bool _ready = false;
+
+  int get activeFileTransfers =>
+      fileTasks.where((task) => task.isActive).length;
 
   bool get ready => _ready;
 
@@ -452,6 +540,197 @@ final class DiscoveryController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Encola el envío de [paths] hacia [server].
+  ///
+  /// Las transferencias se ejecutan de una en una para no saturar el Wi-Fi y
+  /// para que el progreso y la reanudación sean claros.
+  Future<void> sendFilesTo(PairedServer server, List<String> paths) async {
+    await initialize(scan: false);
+    for (final path in paths) {
+      final file = File(path);
+      if (!await file.exists()) continue;
+      final size = await file.length();
+      if (size <= 0) continue;
+      final task = FileSendTask(
+        id: 'f${DateTime.now().microsecondsSinceEpoch}-${_taskCounter++}',
+        path: path,
+        name: file.uri.pathSegments.last,
+        size: size,
+        serverId: server.serverId,
+        serverName: server.name,
+      );
+      fileTasks = <FileSendTask>[task, ...fileTasks].take(40).toList();
+      _fileQueue.add(task);
+    }
+    notifyListeners();
+    _pumpFileQueue();
+  }
+
+  /// Envía archivos compartidos desde otra app.
+  ///
+  /// Con una sola PC emparejada se envían al instante; si no, quedan en
+  /// [pendingSharedFiles] para que la UI pregunte el destino.
+  Future<void> sendSharedFiles(List<String> paths) async {
+    await initialize(scan: false);
+    if (paths.isEmpty) return;
+    if (pairedServers.length != 1) {
+      pendingSharedFiles = paths;
+      notifyListeners();
+      return;
+    }
+    pendingSharedFiles = const <String>[];
+    await sendFilesTo(pairedServers.first, paths);
+  }
+
+  void clearPendingSharedFiles() {
+    if (pendingSharedFiles.isEmpty) return;
+    pendingSharedFiles = const <String>[];
+    notifyListeners();
+  }
+
+  /// Cancela una tarea en cola o en curso.
+  void cancelFileTask(FileSendTask task) {
+    if (!task.isActive) return;
+    task.cancelRequested = true;
+    if (task.status == FileTaskStatus.queued) {
+      _fileQueue.remove(task);
+      task.status = FileTaskStatus.canceled;
+      task.finishedAt = DateTime.now();
+    }
+    notifyListeners();
+  }
+
+  /// Reintenta una tarea fallida o cancelada con [server].
+  Future<void> retryFileTask(FileSendTask task, PairedServer server) async {
+    if (task.isActive) return;
+    task
+      ..status = FileTaskStatus.queued
+      ..sentBytes = 0
+      ..totalBytes = task.size
+      ..error = null
+      ..sha256 = null
+      ..finishedAt = null
+      ..cancelRequested = false;
+    _fileQueue.add(task);
+    notifyListeners();
+    _pumpFileQueue();
+  }
+
+  void _pumpFileQueue() {
+    if (_processingFile) return;
+    if (_fileQueue.isEmpty) {
+      unawaited(_foreground.stop());
+      return;
+    }
+
+    final task = _fileQueue.removeFirst();
+    _processingFile = true;
+    unawaited(
+      _runFileTask(task).whenComplete(() {
+        _processingFile = false;
+        _pumpFileQueue();
+      }),
+    );
+  }
+
+  Future<void> _runFileTask(FileSendTask task) async {
+    final identity = _identity;
+    if (identity == null) {
+      task
+        ..status = FileTaskStatus.failed
+        ..error = 'La identidad del celular no está disponible';
+      notifyListeners();
+      return;
+    }
+
+    PairedServer? selected;
+    for (final item in pairedServers) {
+      if (item.serverId == task.serverId) {
+        selected = item;
+        break;
+      }
+    }
+    final target = selected;
+    if (target == null) {
+      task
+        ..status = FileTaskStatus.failed
+        ..error = 'La PC de destino ya no está emparejada';
+      notifyListeners();
+      return;
+    }
+
+    task.status = FileTaskStatus.hashing;
+    notifyListeners();
+    unawaited(_foreground.start(title: 'Preparando ${task.name}'));
+    _updateForeground(task);
+
+    JScanClient? client;
+    try {
+      client = await JScanClient.connectPaired(
+        server: target,
+        identity: identity,
+        device: _deviceInfo(identity),
+      );
+      final delivery = await client.sendFile(
+        File(task.path),
+        name: task.name,
+        shouldCancel: () => task.cancelRequested,
+        onProgress: (progress) {
+          task
+            ..sentBytes = progress.sentBytes
+            ..totalBytes = progress.totalBytes
+            ..status = switch (progress.phase) {
+              FileTransferPhase.hashing => FileTaskStatus.hashing,
+              FileTransferPhase.uploading => FileTaskStatus.sending,
+              FileTransferPhase.completed => FileTaskStatus.completed,
+            };
+          _updateForeground(task);
+          notifyListeners();
+        },
+      );
+      task
+        ..status = FileTaskStatus.completed
+        ..sentBytes = task.totalBytes
+        ..sha256 = delivery.sha256
+        ..finishedAt = DateTime.now();
+    } on FileTransferCanceledException {
+      task
+        ..status = FileTaskStatus.canceled
+        ..finishedAt = DateTime.now();
+    } on ProtocolException catch (error) {
+      if (error.code == ProtocolErrorCode.cancelled) {
+        task
+          ..status = FileTaskStatus.canceled
+          ..finishedAt = DateTime.now();
+      } else {
+        task
+          ..status = FileTaskStatus.failed
+          ..error = '${error.code}: ${error.message}'
+          ..finishedAt = DateTime.now();
+      }
+    } catch (error) {
+      task
+        ..status = FileTaskStatus.failed
+        ..error = '$error'
+        ..finishedAt = DateTime.now();
+    } finally {
+      await client?.close();
+      notifyListeners();
+    }
+  }
+
+  void _updateForeground(FileSendTask task) {
+    if (!task.isActive) return;
+    unawaited(
+      _foreground.update(
+        title: task.status == FileTaskStatus.hashing
+            ? 'Preparando ${task.name}'
+            : 'Enviando ${task.name}',
+        progress: task.status == FileTaskStatus.hashing ? 0 : task.percent,
+      ),
+    );
+  }
+
   SendResult _recordFailure({
     required String text,
     required HistoryKind kind,
@@ -521,6 +800,7 @@ final class DiscoveryController extends ChangeNotifier {
   void dispose() {
     unawaited(_subscription?.cancel());
     unawaited(_browser.stop());
+    unawaited(_foreground.stop());
     super.dispose();
   }
 }

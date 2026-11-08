@@ -37,6 +37,9 @@ final class ServerController extends ChangeNotifier {
   List<ActivityEntry> activity = const <ActivityEntry>[];
   List<PairedDevice> pairedDevices = const <PairedDevice>[];
   List<HistoryEntry> history = const <HistoryEntry>[];
+  List<ReceivedFile> receivedFiles = const <ReceivedFile>[];
+  FileTransferProgress? currentFileProgress;
+  String? downloadDirectory;
 
   /// Si está activo, cada texto recibido se copia al portapapeles de Windows.
   bool copyToClipboard = true;
@@ -92,10 +95,17 @@ final class ServerController extends ChangeNotifier {
       _settings = await settingsStore.load();
       copyToClipboard = _settings.copyToClipboard;
 
+      final downloads = await getDownloadsDirectory();
+      final directory = _settings.downloadDirectory ??
+          downloads?.path ??
+          '${support.path}${separator}archivos';
+      downloadDirectory = directory;
+
       final server = await LocalServer.start(
         identity: identity,
         pairedDevices: devices,
         history: _openHistory(support),
+        downloadDirectory: Directory(directory),
         onPairingRequest: _confirmPairing,
       );
       _server = server;
@@ -211,6 +221,44 @@ final class ServerController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Cambia la carpeta donde se guardan los archivos recibidos.
+  ///
+  /// Devuelve `false` si hay una transferencia en curso.
+  Future<bool> setDownloadDirectory(String path) async {
+    final directory = Directory(path);
+    try {
+      await directory.create(recursive: true);
+    } catch (error) {
+      _addActivity('No se pudo crear la carpeta $path: $error');
+      notifyListeners();
+      return false;
+    }
+
+    final server = _server;
+    if (server != null && !server.setDownloadDirectory(directory)) {
+      return false;
+    }
+
+    downloadDirectory = directory.path;
+    _settings = _settings.copyWith(downloadDirectory: directory.path);
+    await _settingsStore?.save(_settings);
+    _addActivity('Carpeta de archivos: ${directory.path}');
+    notifyListeners();
+    return true;
+  }
+
+  /// Abre la carpeta de archivos recibidos en el Explorador de Windows.
+  void openDownloadDirectory() {
+    final directory = downloadDirectory;
+    if (directory == null) return;
+    unawaited(Process.run('explorer.exe', <String>[directory]));
+  }
+
+  /// Muestra un archivo concreto seleccionado en el Explorador.
+  void revealFile(ReceivedFile file) {
+    unawaited(Process.run('explorer.exe', <String>['/select,${file.path}']));
+  }
+
   /// Elimina una entrada concreta del historial (SQLite y memoria).
   Future<void> deleteHistoryEntry(HistoryEntry entry) async {
     final server = _server;
@@ -292,6 +340,7 @@ final class ServerController extends ChangeNotifier {
         final previous = sessions.where((item) => item.id == sessionId);
         final name =
             previous.isEmpty ? 'Un dispositivo' : previous.first.displayName;
+        currentFileProgress = null;
         _addActivity('$name se desconectó');
         break;
       case ServerPingReceived(:final session):
@@ -310,6 +359,22 @@ final class ServerController extends ChangeNotifier {
         if (copyToClipboard) {
           unawaited(_copyText(entry.text));
         }
+        break;
+      case ServerFileProgress(:final progress):
+        currentFileProgress = progress;
+        break;
+      case ServerFileReceived(:final file):
+        currentFileProgress = null;
+        receivedFiles =
+            <ReceivedFile>[file, ...receivedFiles].take(50).toList();
+        _addActivity(
+          'Archivo recibido de ${file.fromDeviceName ?? 'un dispositivo'}: '
+          '${file.name} (${file.readableSize})',
+        );
+        break;
+      case ServerFileCanceled(:final name):
+        currentFileProgress = null;
+        _addActivity('Envío cancelado por el celular: $name');
         break;
       case ServerPairingWindowChanged(:final open):
         if (!open) {

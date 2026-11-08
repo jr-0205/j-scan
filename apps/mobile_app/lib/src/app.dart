@@ -25,26 +25,70 @@ class _JScanMobileAppState extends ConsumerState<JScanMobileApp> {
       GlobalKey<ScaffoldMessengerState>();
 
   StreamSubscription<String>? _shareSubscription;
+  StreamSubscription<List<String>>? _shareFilesSubscription;
   String? _lastSharedText;
   DateTime? _lastSharedAt;
+  String? _lastSharedFilesKey;
+  DateTime? _lastSharedFilesAt;
 
   @override
   void initState() {
     super.initState();
     _shareSubscription = _shares.texts.listen(_onSharedText);
-    unawaited(_readInitialShare());
+    _shareFilesSubscription = _shares.files.listen(_onSharedFiles);
+    unawaited(_readInitialShares());
   }
 
   @override
   void dispose() {
     unawaited(_shareSubscription?.cancel());
+    unawaited(_shareFilesSubscription?.cancel());
     _shares.dispose();
     super.dispose();
   }
 
-  Future<void> _readInitialShare() async {
+  Future<void> _readInitialShares() async {
     final text = await _shares.initialText();
     if (text != null) await _onSharedText(text);
+    final files = await _shares.initialFiles();
+    if (files.isNotEmpty) await _onSharedFiles(files);
+  }
+
+  Future<void> _onSharedFiles(List<String> paths) async {
+    if (paths.isEmpty) return;
+    final now = DateTime.now();
+    final key = paths.join('|');
+    final duplicate = _lastSharedFilesKey == key &&
+        _lastSharedFilesAt != null &&
+        now.difference(_lastSharedFilesAt!) < const Duration(seconds: 3);
+    _lastSharedFilesKey = key;
+    _lastSharedFilesAt = now;
+    if (duplicate) return;
+
+    final controller = ref.read(discoveryControllerProvider);
+    await controller.sendSharedFiles(paths);
+    final messenger = _messengerKey.currentState;
+    if (messenger == null) return;
+
+    if (controller.pendingSharedFiles.isNotEmpty) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            'Elige la PC de destino para enviar '
+            '${paths.length} archivo${paths.length == 1 ? '' : 's'}.',
+          ),
+        ),
+      );
+    } else {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            '${paths.length} archivo${paths.length == 1 ? '' : 's'} en cola '
+            'de envío cifrado.',
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _onSharedText(String text) async {

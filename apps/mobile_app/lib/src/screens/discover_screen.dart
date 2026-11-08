@@ -6,6 +6,7 @@ import '../widgets/probe_result_view.dart';
 import 'pair_code_dialog.dart';
 import 'paired_servers_screen.dart';
 import 'qr_scan_screen.dart';
+import 'send_file_screen.dart';
 import 'send_text_screen.dart';
 
 class DiscoverScreen extends StatelessWidget {
@@ -53,7 +54,15 @@ class DiscoverScreen extends StatelessWidget {
               ],
             ),
             actions: <Widget>[
-              if (paired.isNotEmpty)
+              if (paired.isNotEmpty) ...<Widget>[
+                IconButton(
+                  tooltip: 'Enviar archivos',
+                  onPressed: () => SendFileScreen.open(
+                    context,
+                    controller: controller,
+                  ),
+                  icon: const Icon(Icons.upload_file),
+                ),
                 IconButton(
                   tooltip: 'Enviar texto',
                   onPressed: () => SendTextScreen.open(
@@ -62,6 +71,7 @@ class DiscoverScreen extends StatelessWidget {
                   ),
                   icon: const Icon(Icons.send_outlined),
                 ),
+              ],
               IconButton(
                 tooltip: 'PCs emparejadas',
                 onPressed: () => PairedServersScreen.open(
@@ -106,6 +116,8 @@ class DiscoverScreen extends StatelessWidget {
                   ),
                   if (paired.isNotEmpty) ...<Widget>[
                     const SizedBox(height: 12),
+                    _SendFilesCard(controller: controller),
+                    const SizedBox(height: 12),
                     _SendTextCard(controller: controller),
                     const SizedBox(height: 12),
                     _PairedSummaryCard(
@@ -119,6 +131,10 @@ class DiscoverScreen extends StatelessWidget {
                   if (controller.pendingSharedText != null) ...<Widget>[
                     const SizedBox(height: 12),
                     _SharedTextCard(controller: controller),
+                  ],
+                  if (controller.pendingSharedFiles.isNotEmpty) ...<Widget>[
+                    const SizedBox(height: 12),
+                    _SharedFilesCard(controller: controller),
                   ],
                   const SizedBox(height: 20),
                   _PeersHeader(count: controller.peers.length),
@@ -139,9 +155,9 @@ class DiscoverScreen extends StatelessWidget {
                 ],
                 const SizedBox(height: 24),
                 Text(
-                  'Sprint 3 · texto y portapapeles cifrados con '
-                  'ChaCha20-Poly1305, historial en SQLite en la PC y envío '
-                  'directo desde el menú «Compartir».',
+                  'Sprint 4 · archivos, fotos y videos cifrados con '
+                  'ChaCha20-Poly1305, progreso, cancelación, reanudación, '
+                  'SHA-256 y envío directo desde el menú «Compartir».',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.outline,
@@ -399,6 +415,115 @@ class _SendTextCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _SendFilesCard extends StatelessWidget {
+  const _SendFilesCard({required this.controller});
+
+  final DiscoveryController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final target = controller.pairedServers.first;
+    final active = controller.activeFileTransfers;
+    return Card(
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        leading: Icon(Icons.upload_file, color: theme.colorScheme.primary),
+        title: const Text('Archivos, fotos y videos'),
+        subtitle: Text(
+          active > 0
+              ? '$active transferencia${active == 1 ? '' : 's'} en curso '
+                  'hacia $target.name.'
+              : 'Envía varios archivos con progreso y reanudación a '
+                  '${target.name}.',
+        ),
+        trailing: FilledButton.tonal(
+          onPressed: () => SendFileScreen.open(context, controller: controller),
+          child: Text(active > 0 ? 'Ver' : 'Abrir'),
+        ),
+      ),
+    );
+  }
+}
+
+class _SharedFilesCard extends StatelessWidget {
+  const _SharedFilesCard({required this.controller});
+
+  final DiscoveryController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final paths = controller.pendingSharedFiles;
+    return Card(
+      color: theme.colorScheme.tertiaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Icon(
+                  Icons.ios_share,
+                  color: theme.colorScheme.onTertiaryContainer,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '${paths.length} archivo${paths.length == 1 ? '' : 's'} '
+                    'compartido${paths.length == 1 ? '' : 's'} desde otra app',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: theme.colorScheme.onTertiaryContainer,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              paths.take(3).map(_fileName).join(', '),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onTertiaryContainer,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: <Widget>[
+                FilledButton(
+                  onPressed: () {
+                    final pending = List<String>.of(paths);
+                    controller.clearPendingSharedFiles();
+                    SendFileScreen.open(
+                      context,
+                      controller: controller,
+                      initialPaths: pending,
+                    );
+                  },
+                  child: const Text('Elegir PC y enviar'),
+                ),
+                TextButton(
+                  onPressed: controller.clearPendingSharedFiles,
+                  child: const Text('Descartar'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _fileName(String path) {
+  final parts = path.replaceAll('\\', '/').split('/');
+  return parts.isEmpty ? path : parts.last;
 }
 
 class _SharedTextCard extends StatelessWidget {

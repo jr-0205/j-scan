@@ -388,7 +388,147 @@ Reglas:
 `historyId` identifica la entrada guardada en la PC y `receivedAt` es la hora
 del servidor. El celular considera entregado el mensaje al recibir el ack.
 
-## 9. `error`
+## 9. Archivos y multimedia (Sprint 4)
+
+La transferencia va **siempre dentro de sobres `encrypted`**. El `transferId` es
+el **SHA-256 del archivo completo en hexadecimal minúscula** (64 caracteres), de
+modo que dos intentos del mismo archivo comparten identidad y pueden reanudarse.
+
+```text
+Celular                                             PC
+   |  file_offer {transferId, name, size, ...}        |
+   |------------------------------------------------->|
+   |  file_accept {transferId, offset, chunkSize}     |
+   |<-------------------------------------------------|
+   |  file_chunk {transferId, offset, data}           |
+   |------------------------------------------------->|
+   |  file_ack {transferId, receivedBytes}            |
+   |<-------------------------------------------------|
+   |  ... repite desde offset hasta size ...          |
+   |  file_complete {transferId, size, sha256}        |
+   |------------------------------------------------->|
+   |  file_done {transferId, name, size, sha256, ...} |
+   |<-------------------------------------------------|
+```
+
+### `file_offer` (celular → PC)
+
+```json
+{
+  "transferId": "<sha256 hexadecimal de 64 caracteres>",
+  "name": "video.mp4",
+  "size": 1073741824,
+  "sha256": "<mismo sha256 hexadecimal>",
+  "chunkSize": 262144,
+  "mimeType": "video/mp4"
+}
+```
+
+Reglas:
+
+- `name` no puede estar vacío ni superar 255 caracteres. La PC lo sanea y, si ya
+  existe, guarda una variante `nombre (1).ext`.
+- `size` debe ser positivo y no superar **8 GiB** (`JScanDefaults.maxFileBytes`).
+- `chunkSize` debe estar entre **16 KiB y 512 KiB**
+  (`minFileChunkBytes`/`maxFileChunkBytes`); el valor recomendado es **256 KiB**.
+- El límite de 1 MiB por frame permite enviar 512 KiB de datos más el sobre y el
+  base64 sin acercarse al máximo.
+- Si el archivo excede el límite se responde `file_too_large`.
+
+### `file_accept` (PC → celular)
+
+```json
+{ "transferId": "<sha256>", "offset": 5242880, "chunkSize": 262144 }
+```
+
+La PC guarda los datos incompletos en
+`<carpeta-destino>/.jscan-partial/<transferId>.part`. Al recibir una oferta:
+
+1. Si existe un `.part` para ese `transferId`, calcula su SHA-256 parcial y
+   responde `offset` con los bytes ya presentes.
+2. Si no existe, `offset` es `0`.
+3. El celular continúa leyendo el archivo desde `offset`; así una desconexión de
+   Wi-Fi no reinicia el video de 1 GB.
+
+### `file_chunk` / `file_ack`
+
+`file_chunk` (celular → PC):
+
+```json
+{
+  "transferId": "<sha256>",
+  "offset": 5242880,
+  "data": "<base64url de hasta 512 KiB>"
+}
+```
+
+`file_ack` (PC → celular, mismo `id` del chunk):
+
+```json
+{ "transferId": "<sha256>", "receivedBytes": 5505024 }
+```
+
+- La PC exige que `offset` coincida exactamente con los bytes ya recibidos; si no,
+  responde `invalid_payload` sin cerrar la sesión.
+- `receivedBytes` es acumulado y el cliente lo usa para avanzar el progreso.
+- Si el `.part` supera el tamaño anunciado se descarta y se reinicia en `0`.
+
+### `file_complete` / `file_done`
+
+`file_complete` (celular → PC):
+
+```json
+{
+  "transferId": "<sha256>",
+  "size": 1073741824,
+  "sha256": "<sha256 hexadecimal>"
+}
+```
+
+`file_done` (PC → celular):
+
+```json
+{
+  "transferId": "<sha256>",
+  "name": "video (1).mp4",
+  "size": 1073741824,
+  "sha256": "<sha256 hexadecimal>",
+  "elapsedMs": 18400
+}
+```
+
+La PC verifica tamaño y SHA-256 completo antes de mover el `.part` a su nombre
+definitivo:
+
+- `checksum_mismatch`: el hash no coincide; se borra el `.part` y el archivo no se
+  guarda.
+- `invalid_payload`: faltan bytes o el tamaño no coincide; se borra el `.part`.
+- `transfer_not_found`: no hay una oferta activa con ese `transferId`.
+
+`file_done` no expone la ruta absoluta; solo el nombre final. La UI de la PC
+muestra la carpeta configurada.
+
+### `cancel`
+
+`cancel` (celular → PC) detiene una transferencia y borra su `.part`:
+
+```json
+{ "transferId": "<sha256>" }
+```
+
+No tiene respuesta. El cliente lo envía cuando el usuario pulsa «Cancelar» y
+considera la tarea cancelada. Si el `.part` no existe, la PC ignora el mensaje.
+
+### Reanudación y límites
+
+- El celular calcula el SHA-256 incrementalmente antes de ofrecer el archivo y
+  reporta la fase `hashing`.
+- Tras una desconexión, basta volver a llamar al envío con el mismo archivo: el
+  `transferId` es igual y la PC responde el `offset` guardado.
+- Los `.part` se conservan hasta completar, cancelar o detectar un hash erróneo.
+- La carpeta de destino se configura en la PC; por defecto es `Descargas`.
+
+## 10. `error`
 
 ```json
 { "code": "invalid_message", "message": "payload.device is required" }
@@ -410,19 +550,21 @@ Códigos implementados:
 | `pairing_rejected` | El usuario de la PC rechazó el dispositivo. |
 | `invalid_token` | El token del QR no coincide. |
 | `bad_proof` | La prueba HMAC no es válida. |
+| `checksum_mismatch` | El SHA-256 del archivo no coincide; se descartó. |
+| `file_too_large` | El archivo supera los 8 GiB. |
+| `transfer_not_found` | No hay una transferencia activa con ese `transferId`. |
+| `cancelled` | La transferencia se canceló. |
 
-Reservados para sprints posteriores: `checksum_mismatch`, `file_too_large`,
-`cancelled`.
+## 11. Tipos reservados (no implementados aún)
 
-## 10. Tipos reservados (no implementados aún)
-
-`file_offer`, `file_chunk`, `file_complete`, `cancel`,
-`hello_ack` (obsoleto desde el Sprint 2).
+`hello_ack` (obsoleto desde el Sprint 2). El resto de los tipos de la tabla ya se
+implementa: `file_offer`, `file_accept`, `file_chunk`, `file_ack`,
+`file_complete`, `file_done` y `cancel` pertenecen al Sprint 4.
 
 Se reservan para que clientes v1 puedan rechazarlos de forma controlada con
 `unsupported_type` en lugar de romper la conexión.
 
-## 11. Reglas de compatibilidad
+## 12. Reglas de compatibilidad
 
 1. Un cliente que reciba un `v` distinto de 1 debe cerrar la conexión tras enviar
    `error`.
@@ -436,8 +578,11 @@ Se reservan para que clientes v1 puedan rechazarlos de forma controlada con
 7. `text` y `clipboard` solo se aceptan dentro de una sesión autenticada y
    cifrada; un cliente v1 que no los implemente puede responder
    `unsupported_type` y seguir conectado.
+8. Los mensajes de archivo (`file_offer`, `file_chunk`, `file_complete`,
+   `cancel`) también deben ir cifrados. Un cliente que no implemente archivos
+   puede responder `unsupported_type` a `file_offer` y seguir conectado.
 
-## 12. Criterio de aceptación del Sprint 2
+## 13. Criterio de aceptación del Sprint 2
 
 Con la PC y el celular en la misma red y sin internet:
 
@@ -449,7 +594,7 @@ Con la PC y el celular en la misma red y sin internet:
    mensajes recibe `not_paired` y la conexión se cierra.
 5. La PC puede listar y revocar dispositivos; la revocación corta sus sesiones.
 
-## 13. Criterio de aceptación del Sprint 3
+## 14. Criterio de aceptación del Sprint 3
 
 Con la PC y el celular emparejados en la misma red y sin internet:
 
@@ -464,3 +609,25 @@ Con la PC y el celular emparejados en la misma red y sin internet:
 5. Con «Copiar automáticamente» activo, el último texto queda en el
    portapapeles de Windows.
 6. Sin emparejar, el servidor responde `not_paired` y cierra la conexión.
+
+## 15. Criterio de aceptación del Sprint 4
+
+Con la PC y el celular emparejados en la misma red y sin internet:
+
+1. Se pueden seleccionar varios archivos, fotos o videos y enviarlos con barra de
+   progreso, velocidad y opción de cancelar.
+2. Un video de **1 GB** llega íntegro: la PC verifica el SHA-256 y el archivo
+   final coincide byte a byte.
+3. Si se desconecta el Wi-Fi a mitad del envío, al reconectar y reintentar el
+   mismo archivo la PC responde con el `offset` recibido y el envío continúa; no
+   se vuelve a empezar desde cero.
+4. Un archivo con SHA-256 incorrecto se descarta y la PC reporta
+   `checksum_mismatch`.
+5. La carpeta de destino se puede cambiar desde la PC y se recuerda entre
+   reinicios.
+6. Al terminar, la PC muestra una notificación y el archivo aparece en la lista
+   de archivos recibidos.
+7. En Android, «Compartir» con uno o varios archivos abre J-SCAN y los envía (o
+   pide elegir la PC si hay varias emparejadas).
+8. Los envíos largos siguen activos con la pantalla apagada o la app en segundo
+   plano gracias al servicio en primer plano.

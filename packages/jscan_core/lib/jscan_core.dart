@@ -10,6 +10,8 @@ export 'src/discovery/discovered_peer.dart';
 export 'src/discovery/dns.dart';
 export 'src/discovery/mdns_advertiser.dart';
 export 'src/discovery/mdns_browser.dart';
+export 'src/files/file_receiver.dart';
+export 'src/files/file_transfer.dart';
 export 'src/history/history_entry.dart';
 export 'src/history/history_repository.dart';
 export 'src/network/network_info.dart';

@@ -1,4 +1,4 @@
-# Cómo ejecutar J-SCAN (Sprint 0 + 1 + 2 + 3)
+# Cómo ejecutar J-SCAN (Sprint 0 + 1 + 2 + 3 + 4)
 
 ## Requisitos
 
@@ -143,8 +143,34 @@ Desde Chrome, YouTube o cualquier app con **Compartir → J-SCAN**:
 - si hay cero o varias PCs, la app muestra una tarjeta con el texto compartido para
   que elijas el destino.
 
-El filtro de Android solo acepta `text/plain`; archivos e imágenes llegan en el
-Sprint 4.
+## Enviar archivos, fotos y videos (Sprint 4)
+
+Con una PC ya emparejada:
+
+1. En el celular pulsa el icono de subir archivo o la tarjeta **Archivos, fotos y
+   videos**.
+2. Elige **Fotos y videos** o **Cualquier archivo**. Puedes seleccionar varios a la
+   vez.
+3. Cada archivo aparece como una tarea con su progreso, tamaño y estado. El envío
+   es secuencial para no saturar el Wi-Fi; puedes cancelar una tarea o reintentarla.
+4. La PC guarda los archivos en la carpeta configurada (por defecto **Descargas**).
+   La tarjeta **Archivos recibidos** muestra el progreso, la lista y dos botones:
+   **Abrir** la carpeta y **Cambiar** el destino.
+5. Al terminar, la PC verifica el SHA-256 y muestra un aviso. Si el Wi-Fi se corta,
+   vuelve a enviar el mismo archivo: la PC responde con el `offset` recibido y el
+   envío continúa desde ahí.
+
+Para envíos largos (por ejemplo un video de 1 GB), Android mantiene un servicio en
+primer plano con una notificación de progreso. Puedes cambiar de app o apagar la
+pantalla sin que se cancele la transferencia.
+
+### Compartir archivos desde otras apps
+
+Desde Galería, Archivos o cualquier app con **Compartir → J-SCAN**:
+
+- si hay **una sola PC emparejada**, los archivos se copian a la caché de J-SCAN y
+  se encolan automáticamente;
+- si hay cero o varias PCs, la app muestra una tarjeta para elegir el destino.
 
 ## Verificar desde la terminal
 
@@ -188,7 +214,7 @@ Debe incluir `"pairingRequired": true`.
 ## Pruebas
 
 ```bash
-# Protocolo, cifrado, emparejamiento, servidor/cliente, mDNS E2E e historial
+# Protocolo, cifrado, emparejamiento, servidor/cliente, archivos, mDNS E2E e historial
 cd packages/jscan_core
 dart test
 
@@ -206,7 +232,9 @@ con un navegador real, empareja un cliente y hace un ping cifrado. Es la verific
 automática del criterio del Sprint 2. `packages/jscan_core/test/server_client_test.dart`
 cubre el envío cifrado de `text`/`clipboard`, su rechazo sin emparejar y el límite de
 64 KiB; `apps/desktop_app/test/sqlite_history_test.dart` comprueba el historial SQLite
-real sobre `winsqlite3.dll`.
+real sobre `winsqlite3.dll`. `packages/jscan_core/test/file_transfer_test.dart` cubre
+el envío completo, la reanudación desde `.part`, el SHA-256 incorrecto, la
+cancelación y el rechazo sin emparejar.
 
 ## Problemas frecuentes
 
@@ -222,6 +250,9 @@ real sobre `winsqlite3.dll`.
 | La cámara no abre | Permiso denegado o sin cámara | Revisar permisos de Android o usar **Pegar código** |
 | «No se pudo guardar el mensaje» | La carpeta de datos no es escribible o SQLite falló | La app cae a `history.json`; revisar permisos de la carpeta |
 | El texto no aparece en la PC | La PC está en otra red o el dispositivo fue revocado | Revisar la misma Wi-Fi y volver a emparejar |
+| El archivo no llega completo | El `.part` quedó de una prueba anterior o el hash no coincide | Reintentar el envío; la PC reanuda o descarta la parte inválida |
+| «No se pudo crear la carpeta» | La ruta elegida no es escribible | Elegir otra carpeta con **Cambiar** |
+| El envío se corta al apagar la pantalla | Android suspendió el proceso o negó la notificación | Aceptar el permiso de notificaciones y mantener el servicio en primer plano |
 | «Compartir» no muestra J-SCAN | Android aún no registró el intent | Reinstalar/actualizar el APK y reiniciar el celular |
 | `ISCC.exe` no encontrado al generar el instalador | Inno Setup no está instalado | `winget install JRSoftware.InnoSetup` |
 | Windows muestra «aplicación desconocida» al abrir el instalador | El `.exe` no está firmado | Es esperado sin certificado de code signing; usar «Más información → Ejecutar de todas formas» |
@@ -230,11 +261,13 @@ real sobre `winsqlite3.dll`.
 
 - `packages/jscan_core`: protocolo, cifrado, servidor (shelf), cliente WebSocket,
   mDNS e historial (`HistoryRepository`, JSON en memoria).
-- `apps/desktop_app`: UI de Windows, QR, confirmación, bandeja, control del servidor
-  e historial SQLite (`winsqlite3.dll`). El instalador está en `installer/jscan.iss`
-  y se compila con `tool/build_installer.ps1`.
+- `apps/desktop_app`: UI de Windows, QR, confirmación, bandeja, control del servidor,
+  historial SQLite (`winsqlite3.dll`) y recepción de archivos con carpeta
+  configurable. El instalador está en `installer/jscan.iss` y se compila con
+  `tool/build_installer.ps1`.
 - `apps/mobile_app`: descubrimiento, emparejamiento, lista de PCs, ping cifrado,
-  envío de texto/portapapeles y recepción de «Compartir».
-- `docs/protocol.md`: contrato del protocolo v1 y criterios de los sprints 2 y 3.
+  envío de texto/portapapeles y de archivos, recepción de «Compartir» y servicio en
+  primer plano.
+- `docs/protocol.md`: contrato del protocolo v1 y criterios de los sprints 2, 3 y 4.
 - `docs/architecture.md`: decisiones técnicas.
 - `docs/wireframes.md`: pantallas de los sprints 2 a 6.

@@ -1,4 +1,4 @@
-# Wireframes (Sprint 2 + Sprint 3)
+# Wireframes (Sprint 2 + Sprint 3 + Sprint 4)
 
 Pantallas mínimas acordadas. Los wireframes son de baja fidelidad: definen jerarquía,
 estados y acciones, no el diseño final. Las pantallas de los sprints 3 a 6 se
@@ -193,7 +193,68 @@ Se envía solo si hay exactamente una PC emparejada; si no, aparece esta tarjeta
 Estados: vacío · con entradas · copiado · historial vaciado. El historial persiste
 en `history.sqlite` con un máximo de 500 entradas.
 
-## 9. Escáner (Sprint 5)
+## 9. Celular · Enviar archivos, fotos y videos (Sprint 4)
+
+```text
++----------------------------------+
+|  <   Enviar archivos             |
++----------------------------------+
+|  PC de destino                   |
+|  [ 🖥 DESKTOP-ABC · 192.168.1.20 ]|
+|                                  |
+|  ¿Qué quieres enviar?            |
+|  [ Fotos y videos ] [ Archivo ]  |
+|                                  |
+|  Transferencias         2 activas|
+|  🎬 video.mp4                    |
+|     1.0 GB · DESKTOP-ABC     [x] |
+|     [██████████░░░░░░]           |
+|     Enviando · 62% · 640 MB de 1GB|
+|  🖼 foto.jpg                     |
+|     3.2 MB · En cola         [x] |
++----------------------------------+
+```
+
+Estados: sin PCs · eligiendo · en cola · calculando SHA-256 · enviando · cancelando ·
+completado · error · reintento. El envío es secuencial y se puede cancelar por
+archivo.
+
+## 10. Celular · Archivos compartidos desde otra app (Sprint 4)
+
+```text
++----------------------------------+
+|  J-SCAN              [🛡 1] [↻]  |
++----------------------------------+
+|  2 archivos compartidos          |
+|  video.mp4, foto.jpg             |
+|  [ Elegir PC y enviar ] [Descartar]|
++----------------------------------+
+```
+
+Se envían automáticamente solo si hay exactamente una PC emparejada; si no, aparece
+esta tarjeta.
+
+## 11. PC · Archivos recibidos (Sprint 4)
+
+```text
++--------------------------------------------------+
+|  📁 Archivos recibidos                       [3] |
+|  C:\Users\...\Downloads    [Abrir] [Cambiar]     |
+|  ----------------------------------------------  |
+|  🎬 video.mp4                                    |
+|     [████████████░░░░░░]  Enviando · 74%         |
+|     760 MB de 1.0 GB · calculando SHA-256        |
+|  ----------------------------------------------  |
+|  🖼 foto.jpg                                     |
+|     3.2 MB · 12:04 · Pixel 8 · SHA 4f2a91c3…     |
+|                                   [📂 Mostrar]   |
++--------------------------------------------------+
+```
+
+Estados: sin carpeta · sin archivos · recibiendo (hash/envío) · verificado ·
+cancelado · nombre duplicado renombrado. La carpeta se recuerda en `settings.json`.
+
+## 12. Escáner (Sprint 5)
 
 ```text
 +----------------------------------+

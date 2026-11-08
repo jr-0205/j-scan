@@ -4,6 +4,7 @@ import 'package:jscan_core/jscan_core.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../server_controller.dart';
+import 'files_card.dart';
 import 'inbox_card.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -17,6 +18,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   String? _shownPairingKey;
+  String? _shownFileId;
 
   @override
   void initState() {
@@ -42,6 +44,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onControllerChanged() {
+    _maybeAnnounceReceivedFile();
+
     final request = widget.controller.pendingPairing;
     if (request == null || _shownPairingKey == request.key) return;
     _shownPairingKey = request.key;
@@ -56,6 +60,29 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       widget.controller.resolvePairing(accepted == true);
       _shownPairingKey = null;
+    });
+  }
+
+  void _maybeAnnounceReceivedFile() {
+    final files = widget.controller.receivedFiles;
+    if (files.isEmpty) return;
+    final file = files.first;
+    if (file.id == _shownFileId) return;
+    _shownFileId = file.id;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Archivo recibido: ${file.name} (${file.readableSize})',
+          ),
+          action: SnackBarAction(
+            label: 'Abrir carpeta',
+            onPressed: widget.controller.openDownloadDirectory,
+          ),
+        ),
+      );
     });
   }
 
@@ -112,6 +139,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   _PairingCard(controller: controller),
                   const SizedBox(height: 16),
                   InboxCard(controller: controller),
+                  const SizedBox(height: 16),
+                  FilesCard(controller: controller),
                   const SizedBox(height: 16),
                   _PairedDevicesCard(controller: controller),
                   const SizedBox(height: 16),
@@ -743,8 +772,8 @@ class _SprintNote extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Text(
-      'Sprint 3 · texto y portapapeles cifrados de extremo a extremo, con '
-      'historial en SQLite y copia automática en Windows.',
+      'Sprint 4 · archivos, fotos y videos cifrados por Wi-Fi, con progreso, '
+      'reanudación, SHA-256 y carpeta de destino configurable.',
       textAlign: TextAlign.center,
       style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: Theme.of(context).colorScheme.outline,

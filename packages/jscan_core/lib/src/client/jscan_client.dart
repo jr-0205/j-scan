@@ -9,6 +9,7 @@ import '../crypto/bytes.dart';
 import '../crypto/identity.dart';
 import '../crypto/pairing_code.dart';
 import '../crypto/secure_channel.dart';
+import '../files/file_transfer.dart';
 import '../pairing/paired_device.dart';
 import '../protocol/constants.dart';
 import '../protocol/device_info.dart';
@@ -355,6 +356,208 @@ final class JScanClient {
       receivedAt: receivedAt == null
           ? DateTime.now()
           : DateTime.fromMillisecondsSinceEpoch(receivedAt),
+    );
+  }
+
+  /// Envía [file] por partes con progreso, reanudación y SHA-256.
+  ///
+  /// El `transferId` es el SHA-256 del contenido, así que si la conexión se
+  /// corta y se vuelve a llamar con el mismo archivo, la PC responde con el
+  /// `offset` ya recibido y el envío continúa desde ahí.
+  ///
+  /// [shouldCancel] se consulta antes de cada bloque; si devuelve `true` se
+  /// envía `cancel` a la PC y se lanza [FileTransferCanceledException].
+  Future<FileDelivery> sendFile(
+    File file, {
+    int chunkSize = JScanDefaults.fileChunkBytes,
+    String? name,
+    String? mimeType,
+    void Function(FileTransferProgress progress)? onProgress,
+    bool Function()? shouldCancel,
+    Duration? timeout,
+  }) async {
+    if (_cipher == null) {
+      throw const JScanConnectionException(
+        'La sesión no está autenticada; empareja el dispositivo primero',
+      );
+    }
+    if (chunkSize < JScanDefaults.minFileChunkBytes ||
+        chunkSize > JScanDefaults.maxFileChunkBytes) {
+      throw ProtocolException(
+        ProtocolErrorCode.invalidPayload,
+        'chunkSize debe estar entre '
+        '${JScanDefaults.minFileChunkBytes} y '
+        '${JScanDefaults.maxFileChunkBytes} bytes',
+      );
+    }
+    if (!await file.exists()) {
+      throw FileSystemException('El archivo no existe', file.path);
+    }
+    final total = await file.length();
+    if (total <= 0) {
+      throw const ProtocolException(
+        ProtocolErrorCode.invalidPayload,
+        'No se pueden enviar archivos vacíos',
+      );
+    }
+    if (total > JScanDefaults.maxFileBytes) {
+      throw const ProtocolException(
+        ProtocolErrorCode.fileTooLarge,
+        'El archivo supera el máximo de ${JScanDefaults.maxFileBytes} bytes',
+      );
+    }
+
+    final displayName = name ?? file.uri.pathSegments.last;
+    final ackTimeout = timeout ?? const Duration(seconds: 30);
+
+    onProgress?.call(
+      FileTransferProgress(
+        transferId: '',
+        name: displayName,
+        sentBytes: 0,
+        totalBytes: total,
+        phase: FileTransferPhase.hashing,
+      ),
+    );
+    final digest = await hashFile(
+      file,
+      shouldCancel: shouldCancel,
+      onProgress: (processed, totalBytes) {
+        onProgress?.call(
+          FileTransferProgress(
+            transferId: '',
+            name: displayName,
+            sentBytes: processed,
+            totalBytes: totalBytes,
+            phase: FileTransferPhase.hashing,
+          ),
+        );
+      },
+    );
+    final transferId = digest;
+
+    final offer = FileOffer(
+      transferId: transferId,
+      name: displayName,
+      size: total,
+      sha256: digest,
+      chunkSize: chunkSize,
+      mimeType: mimeType,
+    );
+    final acceptEnvelope = await _request(
+      MessageType.fileOffer,
+      offer.toJson(),
+      expected: MessageType.fileAccept,
+      timeout: ackTimeout,
+    );
+    final accept = FileAccept.fromEnvelopePayload(acceptEnvelope.payload);
+    if (accept.transferId != transferId) {
+      throw ProtocolException(
+        ProtocolErrorCode.invalidMessage,
+        'La PC respondió con otro transferId',
+      );
+    }
+    if (accept.offset < 0 || accept.offset > total) {
+      throw ProtocolException(
+        ProtocolErrorCode.invalidPayload,
+        'La PC pidió un offset fuera de rango: ${accept.offset}',
+      );
+    }
+
+    var sent = accept.offset;
+    onProgress?.call(
+      FileTransferProgress(
+        transferId: transferId,
+        name: displayName,
+        sentBytes: sent,
+        totalBytes: total,
+      ),
+    );
+
+    final handle = await file.open();
+    try {
+      await handle.setPosition(sent);
+      while (sent < total) {
+        if (shouldCancel?.call() ?? false) {
+          send(MessageType.cancel, payload: <String, Object?>{
+            'transferId': transferId,
+          });
+          throw const FileTransferCanceledException();
+        }
+
+        final remaining = total - sent;
+        final want = remaining < chunkSize ? remaining : chunkSize;
+        final data = await handle.read(want);
+        if (data.isEmpty) {
+          throw ProtocolException(
+            ProtocolErrorCode.internalError,
+            'El archivo terminó antes de lo esperado en el byte $sent',
+          );
+        }
+
+        final ack = await _request(
+          MessageType.fileChunk,
+          <String, Object?>{
+            'transferId': transferId,
+            'offset': sent,
+            'data': encodeBase64(data),
+          },
+          expected: MessageType.fileAck,
+          timeout: ackTimeout,
+        );
+        final received = ack.intField('receivedBytes');
+        if (received == null || received != sent + data.length) {
+          throw ProtocolException(
+            ProtocolErrorCode.invalidMessage,
+            'La PC confirmó $received bytes y se esperaban '
+            '${sent + data.length}',
+          );
+        }
+        sent = received;
+        onProgress?.call(
+          FileTransferProgress(
+            transferId: transferId,
+            name: displayName,
+            sentBytes: sent,
+            totalBytes: total,
+            phase: FileTransferPhase.uploading,
+          ),
+        );
+      }
+    } finally {
+      await handle.close();
+    }
+
+    final done = await _request(
+      MessageType.fileComplete,
+      <String, Object?>{
+        'transferId': transferId,
+        'size': total,
+        'sha256': digest,
+      },
+      expected: MessageType.fileDone,
+      timeout: ackTimeout,
+    );
+
+    onProgress?.call(
+      FileTransferProgress(
+        transferId: transferId,
+        name: displayName,
+        sentBytes: total,
+        totalBytes: total,
+        phase: FileTransferPhase.completed,
+      ),
+    );
+
+    return FileDelivery(
+      transferId: transferId,
+      name: done.stringField('name') ?? displayName,
+      path: '',
+      size: total,
+      sha256: done.stringField('sha256') ?? digest,
+      elapsed: Duration(
+        milliseconds: done.intField('elapsedMs') ?? 0,
+      ),
     );
   }
 

@@ -27,6 +27,12 @@ abstract final class ProtocolErrorCode {
   static const String pairingRejected = 'pairing_rejected';
   static const String invalidToken = 'invalid_token';
   static const String badProof = 'bad_proof';
+
+  // Sprint 4: archivos.
+  static const String checksumMismatch = 'checksum_mismatch';
+  static const String fileTooLarge = 'file_too_large';
+  static const String transferNotFound = 'transfer_not_found';
+  static const String cancelled = 'cancelled';
 }
 
 /// Fallo al abrir o mantener la conexión WebSocket.

@@ -82,6 +82,32 @@ El servidor acepta `text` y `clipboard` únicamente después de `auth_ok`. Cada
 mensaje produce un `ServerMessageReceived` con la entrada ya persistida, de modo
 que la UI de la PC no necesita consultar el historial en cada evento.
 
+## Módulos del Sprint 4
+
+| Módulo | Responsabilidad |
+|---|---|
+| `files/file_transfer.dart` | Modelos (`FileOffer`, `FileAccept`, `FileTransferProgress`, `ReceivedFile`), validación, hash incremental y saneamiento de nombres. |
+| `files/file_receiver.dart` | Recibe trozos, reanuda desde `.jscan-partial/<sha256>.part`, verifica SHA-256 y cancela. |
+| `LocalServer` (`file_offer`/`file_chunk`/`file_complete`/`cancel`) | Responde `file_accept` con `offset`, guarda en la carpeta destino y responde `file_ack`/`file_done`. |
+| `JScanClient.sendFile` | Calcula el hash, ofrece el archivo, envía trozos de 256 KiB, reporta progreso y se reanuda con el `offset`. |
+| `desktop_app/server_controller.dart` | Carpeta de destino persistida, lista de archivos, progreso y avisos. |
+| `desktop_app/screens/files_card.dart` | Progreso, archivos recibidos, abrir carpeta y cambiar destino con `file_selector`. |
+| `mobile_app/screens/send_file_screen.dart` | Selección múltiple con `file_picker`, tareas, progreso, cancelación y reintento. |
+| `mobile_app/platform/foreground_service.dart` + `FileTransferService.kt` | Servicio en primer plano con notificación para envíos largos. |
+| `MainActivity` (`ACTION_SEND`/`ACTION_SEND_MULTIPLE`) | Copia los archivos compartidos a la caché y los entrega al controlador. |
+
+Decisiones clave:
+
+- **Transferencias secuenciales** en el celular: una sesión WebSocket por archivo,
+  procesadas de una en una. Prioriza el ancho de banda del Wi-Fi y evita mezclar
+  progresos; la cola permite cancelar sin afectar al resto.
+- **Hash como identidad**: el `transferId` es el SHA-256 completo. No hace falta un
+  registro en la PC para reanudar: el nombre del `.part` identifica el contenido.
+- **Verificación al final**: los trozos se escriben en el `.part`; solo al recibir
+  `file_complete` se comprueba tamaño y SHA-256 y se mueve al nombre definitivo.
+- Los archivos recibidos se anuncian con `ServerFileProgress` y `ServerFileReceived`;
+  la UI de la PC no hace polling.
+
 ## Descubrimiento sin plugins
 
 El readme propone `bonsoir`. Para el Sprint 1 se implementó mDNS directamente con
@@ -115,7 +141,8 @@ añadir `multicast_lock` en `mobile_app` sin cambiar el protocolo.
 | Dispositivos autorizados | `paired_devices.json` | — |
 | PCs autorizadas | — | `flutter_secure_storage` |
 | Textos y portapapeles | `history.sqlite` (SQLite) | memoria de la sesión |
-| Preferencias | `settings.json` (copia automática) | — |
+| Archivos recibidos | carpeta configurable (por defecto `Descargas`) + `.jscan-partial/` | — |
+| Preferencias | `settings.json` (copia automática y carpeta de archivos) | — |
 
 Los IDs de servidor y dispositivo son estables desde el Sprint 2. En el Sprint 3
 el historial usa SQLite a través del paquete `sqlite3`, cargando `winsqlite3.dll`
@@ -158,7 +185,26 @@ Sprint 3:
 - El historial SQLite se abre con `winsqlite3.dll` del propio Windows; no se
   descargan binarios nativos ni se ejecuta SQL construido con datos del celular
   (todas las consultas usan parámetros).
-- Compartir desde Android captura solo `ACTION_SEND` con `text/plain`; el resto de
-  tipos se ignora y el intent se consume una sola vez para evitar duplicados.
+- Compartir desde Android captura `ACTION_SEND` y `ACTION_SEND_MULTIPLE`; el intent
+  se consume una sola vez para evitar duplicados.
 - Copiar al portapapeles es una preferencia local de la PC; el celular no puede
   activarla ni leer el portapapeles del PC.
+
+Sprint 4:
+
+- `file_offer`, `file_chunk`, `file_complete` y `cancel` solo se procesan dentro de
+  un sobre `encrypted`; fuera de una sesión autenticada se responde `not_paired` y
+  se cierra.
+- El nombre recibido se sanea (sin rutas, caracteres reservados de Windows ni
+  nombres de dispositivo) y se resuelve una ruta única dentro de la carpeta destino.
+  La PC nunca escribe fuera de esa carpeta.
+- El tamaño se valida antes de aceptar (máximo 8 GiB) y cada trozo se limita a
+  512 KiB para no superar el frame máximo de 1 MiB.
+- El SHA-256 se calcula incrementalmente en el celular y se vuelve a calcular en la
+  PC mientras escribe; un hash distinto borra el `.part` y responde
+  `checksum_mismatch`.
+- Los `.part` se conservan solo para reanudar; al completar o cancelar se eliminan.
+- Los archivos compartidos desde otras apps se copian a la caché privada de la app
+  antes de leerlos; no se envían `content://` fuera del proceso.
+- El servicio en primer plano de Android solo muestra una notificación de progreso;
+  no mueve bytes ni concede permisos adicionales.

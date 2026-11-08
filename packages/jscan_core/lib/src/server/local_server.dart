@@ -11,6 +11,8 @@ import '../crypto/bytes.dart';
 import '../crypto/identity.dart';
 import '../crypto/pairing_code.dart';
 import '../crypto/secure_channel.dart';
+import '../files/file_receiver.dart';
+import '../files/file_transfer.dart';
 import '../history/history_entry.dart';
 import '../history/history_repository.dart';
 import '../network/network_info.dart';
@@ -72,6 +74,7 @@ final class LocalServer {
     required LocalIdentity identity,
     required PairedDeviceRepository pairedDevices,
     HistoryRepository? history,
+    Directory? downloadDirectory,
     int port = JScanDefaults.port,
     String? name,
     String appVersion = '0.1.0',
@@ -92,6 +95,9 @@ final class LocalServer {
       pairingConfirmationTimeout: pairingConfirmationTimeout,
     );
     server._includeLoopback = includeLoopback;
+    if (downloadDirectory != null) {
+      server._configureFileReceiver(downloadDirectory);
+    }
 
     final wsHandler = webSocketHandler(server._onWebSocket);
     try {
@@ -119,6 +125,7 @@ final class LocalServer {
 
   final PairedDeviceRepository _devices;
   final HistoryRepository _history;
+  FileReceiver? _files;
   late final PairingManager _pairing;
   late final HttpServer _httpServer;
   late bool _includeLoopback;
@@ -188,6 +195,31 @@ final class LocalServer {
   Future<bool> deleteHistoryEntry(String id) => _history.remove(id);
 
   Future<void> clearHistory() => _history.clear();
+
+  /// Carpeta donde se guardan los archivos recibidos (o `null` si está
+  /// deshabilitada).
+  Directory? get downloadDirectory => _files?.destination;
+
+  /// Cambia la carpeta para nuevas transferencias. `false` si hay alguna activa.
+  bool setDownloadDirectory(Directory directory) {
+    final files = _files;
+    if (files == null) {
+      _configureFileReceiver(directory);
+      return true;
+    }
+    return files.setDestination(directory);
+  }
+
+  void _configureFileReceiver(Directory directory) {
+    _files = FileReceiver(
+      destination: directory,
+      onProgress: (progress) => _emit(ServerFileProgress(progress)),
+      onReceived: (file) => _emit(ServerFileReceived(file)),
+      onCanceled: (transferId, name) => _emit(
+        ServerFileCanceled(transferId: transferId, name: name),
+      ),
+    );
+  }
 
   /// Revoca un dispositivo. Sus sesiones activas se cierran de inmediato.
   Future<bool> removePairedDevice(String deviceId) async {
@@ -263,6 +295,7 @@ final class LocalServer {
     await _httpServer.close(force: true);
     await _events.close();
     await _history.close();
+    await _files?.dispose();
   }
 
   Handler _buildHandler(Handler wsHandler) {
@@ -437,6 +470,10 @@ final class LocalServer {
       case MessageType.ping:
       case MessageType.text:
       case MessageType.clipboard:
+      case MessageType.fileOffer:
+      case MessageType.fileChunk:
+      case MessageType.fileComplete:
+      case MessageType.cancel:
         await _rejectNotPaired(runtime, outer, channel);
         break;
       case MessageType.helloAck:
@@ -449,6 +486,9 @@ final class LocalServer {
       case MessageType.pairReject:
       case MessageType.textAck:
       case MessageType.clipboardAck:
+      case MessageType.fileAccept:
+      case MessageType.fileAck:
+      case MessageType.fileDone:
       case MessageType.encrypted:
         _sendError(
           channel,
@@ -457,13 +497,6 @@ final class LocalServer {
           'El servidor no espera ${type.wire} de un cliente',
         );
         break;
-      default:
-        _sendError(
-          channel,
-          outer.id,
-          ProtocolErrorCode.unsupportedType,
-          'Tipo no implementado todavía: ${type.wire}',
-        );
     }
   }
 
@@ -773,6 +806,18 @@ final class LocalServer {
       case MessageType.clipboard:
         await _handleIncomingText(runtime, envelope);
         break;
+      case MessageType.fileOffer:
+        await _handleFileOffer(runtime, envelope);
+        break;
+      case MessageType.fileChunk:
+        await _handleFileChunk(runtime, envelope);
+        break;
+      case MessageType.fileComplete:
+        await _handleFileComplete(runtime, envelope);
+        break;
+      case MessageType.cancel:
+        await _handleFileCancel(runtime, envelope);
+        break;
       case MessageType.error:
         // El cliente informa de un error propio; no requiere respuesta.
         break;
@@ -834,6 +879,194 @@ final class LocalServer {
         'No se pudo guardar el mensaje: $error',
       );
     }
+  }
+
+  Future<void> _handleFileOffer(
+    _SessionRuntime runtime,
+    Envelope envelope,
+  ) async {
+    final channel = _channels[runtime.session.id];
+    if (channel == null) return;
+    final files = _files;
+    if (files == null) {
+      _sendError(
+        channel,
+        envelope.id,
+        ProtocolErrorCode.unsupportedType,
+        'La PC no tiene una carpeta de recepción configurada',
+      );
+      return;
+    }
+
+    try {
+      final offer = FileOffer.parse(envelope.payload);
+      final accept = await files.accept(
+        offer,
+        sessionId: runtime.session.id,
+        fromDeviceId: runtime.session.pairedDeviceId,
+        fromDeviceName: runtime.session.displayName,
+      );
+      runtime.session = runtime.session.copyWith(lastSeen: DateTime.now());
+      await _sendSecure(
+        runtime,
+        Envelope.create(
+          MessageType.fileAccept,
+          id: envelope.id,
+          payload: accept.toJson(),
+        ),
+      );
+    } on ProtocolException catch (error) {
+      _sendError(channel, envelope.id, error.code, error.message);
+    } catch (error) {
+      _sendError(
+        channel,
+        envelope.id,
+        ProtocolErrorCode.internalError,
+        'No se pudo aceptar el archivo: $error',
+      );
+    }
+  }
+
+  Future<void> _handleFileChunk(
+    _SessionRuntime runtime,
+    Envelope envelope,
+  ) async {
+    final channel = _channels[runtime.session.id];
+    if (channel == null) return;
+    final files = _files;
+    if (files == null) {
+      _sendError(
+        channel,
+        envelope.id,
+        ProtocolErrorCode.unsupportedType,
+        'La PC no tiene una carpeta de recepción configurada',
+      );
+      return;
+    }
+
+    try {
+      final transferId = envelope.stringField('transferId');
+      final offset = envelope.intField('offset');
+      final data = envelope.stringField('data');
+      if (transferId == null || offset == null || data == null) {
+        throw const ProtocolException(
+          ProtocolErrorCode.invalidPayload,
+          'file_chunk requiere transferId, offset y data',
+        );
+      }
+      final List<int> bytes;
+      try {
+        bytes = decodeBase64(data);
+      } catch (_) {
+        throw const ProtocolException(
+          ProtocolErrorCode.invalidPayload,
+          'data no es base64 válido',
+        );
+      }
+
+      final progress = await files.writeChunk(transferId, offset, bytes);
+      runtime.session = runtime.session.copyWith(lastSeen: DateTime.now());
+      await _sendSecure(
+        runtime,
+        Envelope.create(
+          MessageType.fileAck,
+          id: envelope.id,
+          payload: <String, Object?>{
+            'transferId': progress.transferId,
+            'receivedBytes': progress.sentBytes,
+          },
+        ),
+      );
+    } on ProtocolException catch (error) {
+      _sendError(channel, envelope.id, error.code, error.message);
+    } catch (error) {
+      _sendError(
+        channel,
+        envelope.id,
+        ProtocolErrorCode.internalError,
+        'No se pudo guardar el trozo: $error',
+      );
+    }
+  }
+
+  Future<void> _handleFileComplete(
+    _SessionRuntime runtime,
+    Envelope envelope,
+  ) async {
+    final channel = _channels[runtime.session.id];
+    if (channel == null) return;
+    final files = _files;
+    if (files == null) {
+      _sendError(
+        channel,
+        envelope.id,
+        ProtocolErrorCode.unsupportedType,
+        'La PC no tiene una carpeta de recepción configurada',
+      );
+      return;
+    }
+
+    try {
+      final transferId = envelope.stringField('transferId');
+      final size = envelope.intField('size');
+      final sha256 = envelope.stringField('sha256');
+      if (transferId == null || size == null || sha256 == null) {
+        throw const ProtocolException(
+          ProtocolErrorCode.invalidPayload,
+          'file_complete requiere transferId, size y sha256',
+        );
+      }
+
+      final received = await files.complete(
+        transferId,
+        size: size,
+        sha256Hex: sha256,
+      );
+      runtime.session = runtime.session.copyWith(lastSeen: DateTime.now());
+      await _sendSecure(
+        runtime,
+        Envelope.create(
+          MessageType.fileDone,
+          id: envelope.id,
+          payload: <String, Object?>{
+            'transferId': received.id,
+            'name': received.name,
+            'size': received.size,
+            'sha256': received.sha256,
+            'elapsedMs': received.duration.inMilliseconds,
+          },
+        ),
+      );
+    } on ProtocolException catch (error) {
+      _sendError(channel, envelope.id, error.code, error.message);
+    } catch (error) {
+      _sendError(
+        channel,
+        envelope.id,
+        ProtocolErrorCode.internalError,
+        'No se pudo completar el archivo: $error',
+      );
+    }
+  }
+
+  Future<void> _handleFileCancel(
+    _SessionRuntime runtime,
+    Envelope envelope,
+  ) async {
+    final channel = _channels[runtime.session.id];
+    if (channel == null) return;
+    final transferId = envelope.stringField('transferId');
+    if (transferId == null) {
+      _sendError(
+        channel,
+        envelope.id,
+        ProtocolErrorCode.invalidPayload,
+        'cancel requiere transferId',
+      );
+      return;
+    }
+    await _files?.cancel(transferId);
+    runtime.session = runtime.session.copyWith(lastSeen: DateTime.now());
   }
 
   Future<void> _rejectNotPaired(
@@ -931,6 +1164,7 @@ final class LocalServer {
     if (subscription != null) {
       unawaited(subscription.cancel());
     }
+    unawaited(_files?.abortSession(sessionId));
     if (removed != null) {
       _emit(ServerClientDisconnected(sessionId));
     }
