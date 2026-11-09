@@ -5,7 +5,7 @@ proyecto fácil de revisar y de mantener.
 
 ## Antes de empezar
 
-- Revisa los [issues abiertos](https://github.com/jr-0205/J-SCAN/issues) para ver
+- Revisa los [issues abiertos](https://github.com/jr-0205/j-scan/issues) para ver
   si alguien ya está trabajando en lo mismo.
 - Para cambios grandes, abre un issue primero y describe el problema y la
   propuesta.
@@ -15,7 +15,7 @@ proyecto fácil de revisar y de mantener.
 ## Preparar el entorno
 
 ```bash
-git clone https://github.com/jr-0205/J-SCAN.git
+git clone https://github.com/jr-0205/j-scan.git
 cd J-SCAN
 dart pub global activate melos
 melos bootstrap

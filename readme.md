@@ -42,7 +42,7 @@ hay cuentas, servidores en la nube ni conexión a internet.
 ## Descargas
 
 La beta **0.2.1** está publicada en
-[GitHub Releases](https://github.com/jr-0205/J-SCAN/releases/tag/v0.2.1):
+[GitHub Releases](https://github.com/jr-0205/j-scan/releases/tag/v0.2.1):
 
 | Archivo | Para qué sirve |
 |---|---|
@@ -128,7 +128,7 @@ J-SCAN/
 ## Puesta en marcha
 
 ```bash
-git clone https://github.com/jr-0205/J-SCAN.git
+git clone https://github.com/jr-0205/j-scan.git
 cd J-SCAN
 dart pub global activate melos
 melos bootstrap

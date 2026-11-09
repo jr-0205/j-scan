@@ -7,7 +7,7 @@ que la reportes de forma privada.
 ## Cómo reportar
 
 1. Abre el aviso privado en
-   [GitHub Security Advisories](https://github.com/jr-0205/J-SCAN/security/advisories/new).
+   [GitHub Security Advisories](https://github.com/jr-0205/j-scan/security/advisories/new).
 2. Describe el impacto, los pasos para reproducirlo y la versión afectada.
 3. Si es posible, incluye una prueba de concepto mínima.
 
