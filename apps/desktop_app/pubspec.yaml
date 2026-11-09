@@ -12,6 +12,8 @@ dependencies:
   flutter_riverpod: 2.6.1
   jscan_core:
     path: ../../packages/jscan_core
+  jscan_ui:
+    path: ../../packages/jscan_ui
   path_provider: ^2.1.6
   file_selector: ^1.0.4
   qr_flutter: ^4.1.0

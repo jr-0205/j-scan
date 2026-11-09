@@ -19,6 +19,7 @@ Future<void> main() async {
       title: 'J-SCAN',
     );
     await windowManager.waitUntilReadyToShow(options, () async {
+      await windowManager.setBrightness(Brightness.dark);
       await windowManager.show();
       await windowManager.focus();
       await windowManager.setPreventClose(true);

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
+import 'package:jscan_ui/jscan_ui.dart';
 import 'package:mobile_app/src/scanner/scan_controller.dart';
 import 'package:mobile_app/src/scanner/scan_pipeline.dart';
 import 'package:mobile_app/src/screens/scan_screen.dart';
@@ -45,7 +46,8 @@ void main() {
     addTearDown(controller.dispose);
 
     await tester.pumpWidget(
-      MaterialApp(home: ScanScreen(controller: controller)),
+      MaterialApp(
+          theme: JScanTheme.dark(), home: ScanScreen(controller: controller)),
     );
 
     expect(find.text('Escáner'), findsOneWidget);
@@ -55,6 +57,27 @@ void main() {
     expect(find.textContaining('Detección automática'), findsOneWidget);
     expect(find.textContaining('blanco y negro'), findsOneWidget);
     expect(find.textContaining('envíalo cifrado'), findsOneWidget);
+  });
+
+  testWidgets('el estado vacío cabe en un teléfono estrecho', (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final temp = await _createTemp(tester);
+    final controller = _buildController(temp);
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: JScanTheme.dark(),
+        home: ScanScreen(controller: controller),
+      ),
+    );
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('captura páginas y muestra filtros y controles', (tester) async {
@@ -72,7 +95,8 @@ void main() {
     addTearDown(controller.dispose);
 
     await tester.pumpWidget(
-      MaterialApp(home: ScanScreen(controller: controller)),
+      MaterialApp(
+          theme: JScanTheme.dark(), home: ScanScreen(controller: controller)),
     );
 
     // El botón dispara E/S real (copiar los archivos), así que se pulsa dentro
@@ -112,7 +136,8 @@ void main() {
     addTearDown(controller.dispose);
 
     await tester.pumpWidget(
-      MaterialApp(home: ScanScreen(controller: controller)),
+      MaterialApp(
+          theme: JScanTheme.dark(), home: ScanScreen(controller: controller)),
     );
     await tester.runAsync(() async {
       await controller.capturePages();

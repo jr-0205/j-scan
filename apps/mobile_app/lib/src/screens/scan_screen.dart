@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:jscan_ui/jscan_ui.dart';
 
 import '../discovery_controller.dart';
 import '../platform/error_messages.dart';
@@ -306,8 +307,14 @@ class _ScanScreenState extends State<ScanScreen> {
                     if (pages.isNotEmpty)
                       SafeArea(
                         top: false,
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                        child: Container(
+                          decoration: const BoxDecoration(
+                            color: JScanColors.background,
+                            border: Border(
+                              top: BorderSide(color: JScanColors.borderSubtle),
+                            ),
+                          ),
+                          padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
                           child: Column(
                             children: <Widget>[
                               Row(
@@ -317,15 +324,19 @@ class _ScanScreenState extends State<ScanScreen> {
                                       onPressed: busy ? null : _scan,
                                       icon: const Icon(
                                         Icons.add_a_photo_outlined,
+                                        size: 18,
                                       ),
                                       label: const Text('Añadir páginas'),
                                     ),
                                   ),
-                                  const SizedBox(width: 12),
+                                  const SizedBox(width: 10),
                                   Expanded(
                                     child: OutlinedButton.icon(
                                       onPressed: busy ? null : _preview,
-                                      icon: const Icon(Icons.zoom_in),
+                                      icon: const Icon(
+                                        Icons.zoom_in,
+                                        size: 18,
+                                      ),
                                       label: const Text('Vista previa'),
                                     ),
                                   ),
@@ -338,6 +349,7 @@ class _ScanScreenState extends State<ScanScreen> {
                                   onPressed: busy ? null : _exportPdf,
                                   icon: const Icon(
                                     Icons.picture_as_pdf_outlined,
+                                    size: 18,
                                   ),
                                   label: const Text('Crear PDF y enviar'),
                                 ),
@@ -352,24 +364,23 @@ class _ScanScreenState extends State<ScanScreen> {
               if (busy)
                 Positioned.fill(
                   child: ColoredBox(
-                    color: Colors.black26,
+                    color: JScanColors.background.withValues(alpha: 0.78),
                     child: Center(
-                      child: Card(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 28,
-                            vertical: 22,
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: <Widget>[
-                              const CircularProgressIndicator(),
-                              const SizedBox(height: 14),
-                              Text(
-                                _controller.busyLabel ?? 'Procesando página…',
-                              ),
-                            ],
-                          ),
+                      child: JScanPanel(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 28,
+                          vertical: 22,
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            const CircularProgressIndicator(),
+                            const SizedBox(height: 14),
+                            Text(
+                              _controller.busyLabel ?? 'Procesando página…',
+                              style: Theme.of(context).textTheme.titleSmall,
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -399,17 +410,18 @@ class _EmptyScanner extends StatelessWidget {
     final theme = Theme.of(context);
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Card(
-          child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: JScanPanel(
             padding: const EdgeInsets.all(24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                Icon(
-                  Icons.document_scanner_outlined,
-                  size: 72,
-                  color: theme.colorScheme.primary,
+                const JScanIconBadge(
+                  icon: Icons.document_scanner_outlined,
+                  tone: JScanTone.info,
+                  size: 64,
                 ),
                 const SizedBox(height: 16),
                 Text(
@@ -445,13 +457,13 @@ class _EmptyScanner extends StatelessWidget {
                 const SizedBox(height: 22),
                 FilledButton.icon(
                   onPressed: busy ? null : onScan,
-                  icon: const Icon(Icons.camera_alt_outlined),
+                  icon: const Icon(Icons.camera_alt_outlined, size: 18),
                   label: const Text('Escanear documento'),
                 ),
                 const SizedBox(height: 8),
                 OutlinedButton.icon(
                   onPressed: busy ? null : onImport,
-                  icon: const Icon(Icons.photo_library_outlined),
+                  icon: const Icon(Icons.photo_library_outlined, size: 18),
                   label: const Text('Importar de galería'),
                 ),
               ],
@@ -473,12 +485,12 @@ class _FeatureRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 9),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Icon(icon, size: 18, color: theme.colorScheme.primary),
-          const SizedBox(width: 8),
+          Icon(icon, size: 17, color: JScanColors.action),
+          const SizedBox(width: 9),
           Expanded(child: Text(text, style: theme.textTheme.bodySmall)),
         ],
       ),
@@ -504,9 +516,9 @@ class _FilterBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Card(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-      child: Padding(
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      child: JScanPanel(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -519,17 +531,15 @@ class _FilterBar extends StatelessWidget {
                     style: theme.textTheme.titleSmall,
                   ),
                 ),
-                Text(
-                  page.rotationDegrees == 0
+                JScanStatusPill(
+                  label: page.rotationDegrees == 0
                       ? page.filterLabel
                       : '${page.filterLabel} · ${page.rotationDegrees}°',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.outline,
-                  ),
+                  tone: JScanTone.neutral,
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Wrap(
               spacing: 8,
               runSpacing: 4,
@@ -575,73 +585,81 @@ class _PageTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Card(
-      color: selected ? theme.colorScheme.secondaryContainer : null,
+    return JScanPanel(
       margin: const EdgeInsets.symmetric(vertical: 4),
-      child: InkWell(
-        onTap: enabled ? onSelect : null,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
-          child: Row(
-            children: <Widget>[
-              ReorderableDragStartListener(
-                index: index,
-                enabled: enabled,
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 4),
-                  child: Icon(Icons.drag_indicator),
+      padding: EdgeInsets.zero,
+      accent: selected,
+      color: selected ? JScanTone.info.surface : null,
+      radius: JScanMetrics.radius,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: enabled ? onSelect : null,
+          borderRadius: BorderRadius.circular(JScanMetrics.radius),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
+            child: Row(
+              children: <Widget>[
+                ReorderableDragStartListener(
+                  index: index,
+                  enabled: enabled,
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4),
+                    child: Icon(Icons.drag_indicator),
+                  ),
                 ),
-              ),
-              GestureDetector(
-                onTap: enabled ? onPreview : null,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.file(
-                    File(page.renderedPath),
-                    width: 54,
-                    height: 72,
-                    fit: BoxFit.cover,
-                    cacheWidth: 160,
-                    gaplessPlayback: true,
-                    errorBuilder: (context, error, stackTrace) => Container(
+                GestureDetector(
+                  onTap: enabled ? onPreview : null,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: Image.file(
+                      File(page.renderedPath),
                       width: 54,
                       height: 72,
-                      color: theme.colorScheme.surfaceContainerHighest,
-                      child: const Icon(Icons.broken_image_outlined),
+                      fit: BoxFit.cover,
+                      cacheWidth: 160,
+                      gaplessPlayback: true,
+                      errorBuilder: (context, error, stackTrace) => Container(
+                        width: 54,
+                        height: 72,
+                        color: JScanColors.surface,
+                        child: const Icon(Icons.broken_image_outlined),
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      'Página ${index + 1}',
-                      style: theme.textTheme.titleSmall,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${page.filterLabel}'
-                      '${page.rotationDegrees == 0 ? '' : ' · ${page.rotationDegrees}°'}',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                  ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        'Página ${index + 1}',
+                        style: theme.textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${page.filterLabel}'
+                        '${page.rotationDegrees == 0 ? '' : ' · ${page.rotationDegrees}°'}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: JScanColors.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              IconButton(
-                tooltip: 'Rotar 90°',
-                onPressed: enabled ? onRotate : null,
-                icon: const Icon(Icons.rotate_right),
-              ),
-              IconButton(
-                tooltip: 'Eliminar página',
-                onPressed: enabled ? onDelete : null,
-                icon: const Icon(Icons.delete_outline),
-              ),
-            ],
+                IconButton(
+                  tooltip: 'Rotar 90°',
+                  onPressed: enabled ? onRotate : null,
+                  icon: const Icon(Icons.rotate_right),
+                ),
+                IconButton(
+                  tooltip: 'Eliminar página',
+                  onPressed: enabled ? onDelete : null,
+                  icon: const Icon(Icons.delete_outline),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -688,7 +706,7 @@ class _PagePreviewDialogState extends State<_PagePreviewDialog> {
         backgroundColor: Colors.black,
         appBar: AppBar(
           backgroundColor: Colors.black,
-          foregroundColor: Colors.white,
+          foregroundColor: JScanColors.textPrimary,
           title: Text(
             'Página ${_index + 1} de ${widget.pages.length} · '
             '${page.filterLabel}',
@@ -731,7 +749,7 @@ class _PagePreviewDialogState extends State<_PagePreviewDialog> {
                   style: Theme.of(context)
                       .textTheme
                       .bodySmall
-                      ?.copyWith(color: Colors.white70),
+                      ?.copyWith(color: JScanColors.textSecondary),
                   textAlign: TextAlign.center,
                 ),
               ),
@@ -810,7 +828,6 @@ class _PdfOptionsDialogState extends State<_PdfOptionsDialog> {
               textInputAction: TextInputAction.done,
               decoration: const InputDecoration(
                 labelText: 'Nombre del archivo',
-                border: OutlineInputBorder(),
                 suffixText: '.pdf',
               ),
               onSubmitted: (_) {

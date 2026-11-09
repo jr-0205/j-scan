@@ -16,6 +16,8 @@ dependencies:
   image: ^4.12.0
   jscan_core:
     path: ../../packages/jscan_core
+  jscan_ui:
+    path: ../../packages/jscan_ui
   mobile_scanner: ^7.4.3
   pdf: ^3.13.1
 

@@ -1,6 +1,7 @@
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:jscan_core/jscan_core.dart';
+import 'package:jscan_ui/jscan_ui.dart';
 
 import '../server_controller.dart';
 
@@ -47,103 +48,151 @@ class FilesCard extends StatelessWidget {
     final progress = controller.currentFileProgress;
     final directory = controller.downloadDirectory;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                const Icon(Icons.folder_copy_outlined),
-                const SizedBox(width: 8),
-                Text('Archivos recibidos', style: theme.textTheme.titleMedium),
-                const Spacer(),
-                Badge(label: Text('${files.length}')),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: <Widget>[
-                Icon(
-                  Icons.folder_outlined,
-                  size: 18,
-                  color: theme.colorScheme.outline,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Tooltip(
-                    message: directory ?? 'Sin carpeta',
-                    child: Text(
-                      directory ?? 'Carpeta no configurada',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        fontFamily: 'Consolas',
-                        fontFamilyFallback: const <String>['monospace'],
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                TextButton.icon(
-                  onPressed: () => _openFolder(context),
-                  icon: const Icon(Icons.open_in_new, size: 18),
-                  label: const Text('Abrir'),
-                ),
-                const SizedBox(width: 4),
-                OutlinedButton.icon(
-                  onPressed: () => _chooseDirectory(context),
-                  icon: const Icon(Icons.drive_folder_upload, size: 18),
-                  label: const Text('Cambiar'),
-                ),
-              ],
-            ),
-            if (progress != null) ...<Widget>[
-              const SizedBox(height: 16),
-              _ProgressTile(progress: progress),
-            ],
-            const SizedBox(height: 12),
-            if (files.isEmpty)
-              Text(
-                'Aún no hay archivos. Desde el celular, elige fotos, videos o '
-                'documentos y envíalos por Wi-Fi; la PC verifica su SHA-256.',
-                style: theme.textTheme.bodyMedium,
-              )
-            else
-              ...files.take(8).map(
-                    (file) => ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: CircleAvatar(
-                        child: Icon(_iconFor(file)),
-                      ),
-                      title: Text(
-                        file.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      subtitle: Text(
-                        '${file.readableSize} · ${_formatTime(file.receivedAt)}'
-                        '${file.fromDeviceName == null ? '' : ' · ${file.fromDeviceName}'}'
-                        ' · SHA ${file.sha256.substring(0, 8)}…',
-                      ),
-                      trailing: IconButton(
-                        tooltip: 'Mostrar en el Explorador',
-                        icon: const Icon(Icons.folder_open),
-                        onPressed: () => controller.revealFile(file),
-                      ),
-                    ),
-                  ),
-            const SizedBox(height: 4),
-            Text(
-              'Los archivos se guardan completos en la carpeta indicada. Si se '
-              'corta la conexión, el envío continúa donde quedó.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.outline,
+    return JScanSection(
+      icon: Icons.folder_copy_outlined,
+      title: 'Archivos recibidos',
+      subtitle: 'Destino, progreso y verificación SHA-256.',
+      trailing: JScanStatusPill(
+        label: '${files.length}',
+        tone: files.isEmpty ? JScanTone.neutral : JScanTone.info,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              const Icon(
+                Icons.folder_outlined,
+                size: 17,
+                color: JScanColors.textMuted,
               ),
-            ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Tooltip(
+                  message: directory ?? 'Sin carpeta',
+                  child: Text(
+                    directory ?? 'Carpeta no configurada',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontFamily: 'Consolas',
+                      fontFamilyFallback: const <String>[
+                        'Cascadia Mono',
+                        'monospace',
+                      ],
+                      color: JScanColors.textSecondary,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              TextButton.icon(
+                onPressed: () => _openFolder(context),
+                icon: const Icon(Icons.open_in_new, size: 17),
+                label: const Text('Abrir'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => _chooseDirectory(context),
+                icon: const Icon(Icons.drive_folder_upload, size: 17),
+                label: const Text('Cambiar'),
+              ),
+            ],
+          ),
+          if (progress != null) ...<Widget>[
+            const SizedBox(height: 16),
+            _ProgressTile(progress: progress),
           ],
-        ),
+          const SizedBox(height: 14),
+          if (files.isEmpty)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const Icon(
+                  Icons.download_outlined,
+                  size: 18,
+                  color: JScanColors.textMuted,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Aún no hay archivos. Desde el celular, elige fotos, videos '
+                    'o documentos y envíalos por Wi-Fi; la PC verifica su '
+                    'SHA-256.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: JScanColors.textSecondary,
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else
+            ...files.take(8).map(
+                  (file) => Column(
+                    children: <Widget>[
+                      _FileRow(controller: controller, file: file),
+                      if (file != files.take(8).last) const Divider(),
+                    ],
+                  ),
+                ),
+          const SizedBox(height: 8),
+          Text(
+            'Los archivos se guardan completos en la carpeta indicada. Si se '
+            'corta la conexión, el envío continúa donde quedó.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: JScanColors.textMuted,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FileRow extends StatelessWidget {
+  const _FileRow({required this.controller, required this.file});
+
+  final ServerController controller;
+  final ReceivedFile file;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: <Widget>[
+          JScanIconBadge(icon: _iconFor(file), size: 36),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  file.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${file.readableSize} · ${_formatTime(file.receivedAt)}'
+                  '${file.fromDeviceName == null ? '' : ' · ${file.fromDeviceName}'}'
+                  ' · SHA ${_shortSha(file.sha256)}…',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: JScanColors.textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Mostrar en el Explorador',
+            icon: const Icon(Icons.folder_open, size: 19),
+            onPressed: () => controller.revealFile(file),
+          ),
+        ],
       ),
     );
   }
@@ -164,10 +213,11 @@ class _ProgressTile extends StatelessWidget {
     };
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
+        color: JScanColors.surface,
+        borderRadius: BorderRadius.circular(JScanMetrics.radius),
+        border: Border.all(color: JScanColors.borderSubtle),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -183,17 +233,29 @@ class _ProgressTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              Text('${progress.percent}%'),
+              Text(
+                '${progress.percent}%',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: JScanColors.action,
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 8),
-          LinearProgressIndicator(value: progress.fraction),
-          const SizedBox(height: 6),
+          const SizedBox(height: 9),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: progress.fraction,
+              backgroundColor: JScanColors.elevated,
+              minHeight: 4,
+            ),
+          ),
+          const SizedBox(height: 7),
           Text(
             '$label · ${_formatBytes(progress.sentBytes)} de '
             '${_formatBytes(progress.totalBytes)}',
             style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.outline,
+              color: JScanColors.textMuted,
             ),
           ),
         ],
@@ -207,6 +269,10 @@ IconData _iconFor(ReceivedFile file) {
   if (file.isVideo) return Icons.videocam_outlined;
   if (file.isAudio) return Icons.audiotrack_outlined;
   return Icons.insert_drive_file_outlined;
+}
+
+String _shortSha(String sha256) {
+  return sha256.length > 8 ? sha256.substring(0, 8) : sha256;
 }
 
 String _formatBytes(int bytes) {

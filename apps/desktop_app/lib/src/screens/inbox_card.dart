@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:jscan_core/jscan_core.dart';
+import 'package:jscan_ui/jscan_ui.dart';
 
 import '../server_controller.dart';
 
@@ -13,77 +14,86 @@ class InboxCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final entries = controller.history;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                const Icon(Icons.mark_email_unread_outlined),
-                const SizedBox(width: 8),
-                Text(
-                  'Textos y portapapeles',
-                  style: theme.textTheme.titleMedium,
-                ),
-                const Spacer(),
-                Badge(label: Text('${entries.length}')),
-              ],
-            ),
-            const SizedBox(height: 4),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              value: controller.copyToClipboard,
-              onChanged: (value) => controller.setCopyToClipboard(value),
-              title: const Text('Copiar automáticamente al portapapeles'),
-              subtitle: const Text(
-                'El último texto recibido queda listo para pegar en Windows.',
+    return JScanSection(
+      icon: Icons.mark_email_unread_outlined,
+      title: 'Textos y portapapeles',
+      subtitle: 'Lo último que llegó desde el celular, listo para usar.',
+      trailing: JScanStatusPill(
+        label: '${entries.length}',
+        tone: entries.isEmpty ? JScanTone.neutral : JScanTone.info,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            value: controller.copyToClipboard,
+            onChanged: (value) => controller.setCopyToClipboard(value),
+            title: const Text('Copiar automáticamente al portapapeles'),
+            subtitle: Text(
+              'El último texto recibido queda listo para pegar en Windows.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: JScanColors.textMuted,
               ),
             ),
-            const Divider(height: 24),
-            if (entries.isEmpty)
-              Text(
-                'Aún no hay mensajes. Desde el celular abre «Enviar texto» o '
-                'comparte un enlace con J-SCAN.',
-                style: theme.textTheme.bodyMedium,
-              )
-            else
-              ...entries.take(20).map(
-                    (entry) => _HistoryTile(
-                      controller: controller,
-                      entry: entry,
+          ),
+          const Divider(height: 20),
+          if (entries.isEmpty)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const Icon(
+                  Icons.inbox_outlined,
+                  size: 18,
+                  color: JScanColors.textMuted,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Aún no hay mensajes. Desde el celular abre «Enviar texto» '
+                    'o comparte un enlace con J-SCAN.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: JScanColors.textSecondary,
                     ),
                   ),
-            if (entries.isNotEmpty) ...<Widget>[
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: <Widget>[
-                  TextButton.icon(
-                    onPressed: () => controller.copyEntry(entries.first),
-                    icon: const Icon(Icons.content_copy),
-                    label: const Text('Copiar último'),
+                ),
+              ],
+            )
+          else
+            ...entries.take(20).map(
+                  (entry) => _HistoryRow(
+                    controller: controller,
+                    entry: entry,
                   ),
-                  TextButton.icon(
-                    onPressed: controller.clearHistory,
-                    icon: const Icon(Icons.delete_sweep_outlined),
-                    label: const Text('Vaciar historial'),
-                  ),
-                ],
-              ),
-            ],
+                ),
+          if (entries.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: <Widget>[
+                TextButton.icon(
+                  onPressed: () => controller.copyEntry(entries.first),
+                  icon: const Icon(Icons.content_copy, size: 17),
+                  label: const Text('Copiar último'),
+                ),
+                TextButton.icon(
+                  onPressed: controller.clearHistory,
+                  icon: const Icon(Icons.delete_sweep_outlined, size: 17),
+                  label: const Text('Vaciar historial'),
+                ),
+              ],
+            ),
           ],
-        ),
+        ],
       ),
     );
   }
 }
 
-class _HistoryTile extends StatelessWidget {
-  const _HistoryTile({required this.controller, required this.entry});
+class _HistoryRow extends StatelessWidget {
+  const _HistoryRow({required this.controller, required this.entry});
 
   final ServerController controller;
   final HistoryEntry entry;
@@ -92,55 +102,68 @@ class _HistoryTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isClipboard = entry.kind == HistoryKind.clipboard;
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      isThreeLine: true,
-      leading: CircleAvatar(
-        backgroundColor: isClipboard
-            ? theme.colorScheme.tertiaryContainer
-            : theme.colorScheme.secondaryContainer,
-        child: Icon(
-          isClipboard ? Icons.content_paste : Icons.notes,
-          color: isClipboard
-              ? theme.colorScheme.onTertiaryContainer
-              : theme.colorScheme.onSecondaryContainer,
+    return Column(
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 9),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              JScanIconBadge(
+                icon: isClipboard ? Icons.content_paste : Icons.notes,
+                tone: isClipboard ? JScanTone.info : JScanTone.neutral,
+                size: 34,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      entry.preview(max: 180),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '${entry.fromDeviceName ?? 'Dispositivo'} · '
+                      '${isClipboard ? 'portapapeles' : 'texto'} · '
+                      '${_formatDate(entry.receivedAt)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: JScanColors.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Copiar al portapapeles',
+                icon: const Icon(Icons.copy, size: 18),
+                onPressed: () async {
+                  await controller.copyEntry(entry);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Copiado al portapapeles'),
+                        duration: Duration(seconds: 1),
+                      ),
+                    );
+                  }
+                },
+              ),
+              IconButton(
+                tooltip: 'Eliminar del historial',
+                icon: const Icon(Icons.close, size: 18),
+                onPressed: () => controller.deleteHistoryEntry(entry),
+              ),
+            ],
+          ),
         ),
-      ),
-      title: Text(
-        entry.preview(max: 180),
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-      ),
-      subtitle: Text(
-        '${entry.fromDeviceName ?? 'Dispositivo'} · '
-        '${isClipboard ? 'portapapeles' : 'texto'} · '
-        '${_formatDate(entry.receivedAt)}',
-      ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          IconButton(
-            tooltip: 'Copiar al portapapeles',
-            icon: const Icon(Icons.copy),
-            onPressed: () async {
-              await controller.copyEntry(entry);
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Copiado al portapapeles'),
-                    duration: Duration(seconds: 1),
-                  ),
-                );
-              }
-            },
-          ),
-          IconButton(
-            tooltip: 'Eliminar del historial',
-            icon: const Icon(Icons.close),
-            onPressed: () => controller.deleteHistoryEntry(entry),
-          ),
-        ],
-      ),
+        const Divider(),
+      ],
     );
   }
 }

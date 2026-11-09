@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:jscan_ui/jscan_ui.dart';
 
 import 'discovery_controller.dart';
 import 'platform/share_intent.dart';
@@ -136,15 +137,9 @@ class _JScanMobileAppState extends ConsumerState<JScanMobileApp> {
       title: 'J-SCAN',
       debugShowCheckedModeBanner: false,
       scaffoldMessengerKey: _messengerKey,
-      theme: ThemeData(
-        colorSchemeSeed: const Color(0xFF3F51B5),
-        useMaterial3: true,
-      ),
-      darkTheme: ThemeData(
-        colorSchemeSeed: const Color(0xFF3F51B5),
-        useMaterial3: true,
-        brightness: Brightness.dark,
-      ),
+      theme: JScanTheme.dark(),
+      darkTheme: JScanTheme.dark(),
+      themeMode: ThemeMode.dark,
       home: Consumer(
         builder: (context, ref, _) {
           final controller = ref.watch(discoveryControllerProvider);

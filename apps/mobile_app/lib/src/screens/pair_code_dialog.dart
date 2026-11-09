@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:jscan_core/jscan_core.dart';
+import 'package:jscan_ui/jscan_ui.dart';
 
 import '../discovery_controller.dart';
 import '../platform/error_messages.dart';
@@ -111,31 +112,18 @@ class _PairCodeDialogState extends State<PairCodeDialog> {
               maxLines: 5,
               enabled: !_busy,
               keyboardType: TextInputType.multiline,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+              style: JScanTheme.mono(theme.textTheme.bodySmall),
               decoration: const InputDecoration(
                 labelText: 'Código J-SCAN',
                 hintText: 'jscan://pair?d=...',
-                border: OutlineInputBorder(),
               ),
             ),
             if (_error != null) ...<Widget>[
               const SizedBox(height: 12),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Icon(
-                    Icons.error_outline,
-                    size: 18,
-                    color: theme.colorScheme.error,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      _error!,
-                      style: TextStyle(color: theme.colorScheme.error),
-                    ),
-                  ),
-                ],
+              JScanBanner(
+                tone: JScanTone.danger,
+                title: 'No se pudo emparejar',
+                message: _error!,
               ),
             ],
           ],

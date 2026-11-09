@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:jscan_core/jscan_core.dart';
+import 'package:jscan_ui/jscan_ui.dart';
 
 import '../discovery_controller.dart';
 
@@ -138,6 +139,7 @@ class _SendTextScreenState extends State<SendTextScreen> {
             !servers.any((s) => s.serverId == _serverId)) {
           _serverId = servers.first.serverId;
         }
+        final theme = Theme.of(context);
         return Scaffold(
           appBar: AppBar(
             title: const Text('Enviar a la PC'),
@@ -147,56 +149,75 @@ class _SendTextScreenState extends State<SendTextScreen> {
                 onPressed: _busy ? null : _sendClipboard,
                 icon: const Icon(Icons.content_paste_go),
               ),
+              const SizedBox(width: 4),
             ],
           ),
-          body: ListView(
-            padding: const EdgeInsets.all(16),
-            children: <Widget>[
-              if (servers.isEmpty)
-                const _NoServersCard()
-              else ...<Widget>[
-                _DestinationCard(
-                  servers: servers,
-                  selectedId: _serverId,
-                  enabled: !_busy,
-                  onChanged: (value) => setState(() => _serverId = value),
-                ),
-                const SizedBox(height: 12),
-                _ComposerCard(
-                  controller: _text,
-                  busy: _busy,
-                  onSend: () => _send(),
-                  onPasteClipboard: _fillFromClipboard,
-                  onSendClipboard: _sendClipboard,
-                ),
-                if (_last != null) ...<Widget>[
-                  const SizedBox(height: 12),
-                  _ResultCard(result: _last!),
-                ],
-                const SizedBox(height: 16),
-                _SentHeader(count: widget.controller.sentMessages.length),
-                const SizedBox(height: 4),
-                if (widget.controller.sentMessages.isEmpty)
-                  Text(
-                    'Todavía no enviaste nada en esta sesión.',
-                    style: Theme.of(context).textTheme.bodySmall,
+          body: SafeArea(
+            top: false,
+            child: ListView(
+              padding: JScanMetrics.pagePadding,
+              children: <Widget>[
+                if (servers.isEmpty)
+                  const JScanEmptyState(
+                    icon: Icons.link_off,
+                    title: 'Primero empareja una PC',
+                    message:
+                        'Vuelve al inicio y escanea el QR que muestra J-SCAN '
+                        'en la PC.',
                   )
-                else
-                  ...widget.controller.sentMessages.take(10).map(
-                        (message) => _SentTile(message: message),
+                else ...<Widget>[
+                  _DestinationPanel(
+                    servers: servers,
+                    selectedId: _serverId,
+                    enabled: !_busy,
+                    onChanged: (value) => setState(() => _serverId = value),
+                  ),
+                  const SizedBox(height: 12),
+                  _ComposerPanel(
+                    controller: _text,
+                    busy: _busy,
+                    onSend: () => _send(),
+                    onPasteClipboard: _fillFromClipboard,
+                    onSendClipboard: _sendClipboard,
+                  ),
+                  if (_last != null) ...<Widget>[
+                    const SizedBox(height: 12),
+                    _ResultBanner(result: _last!),
+                  ],
+                  const SizedBox(height: 22),
+                  JScanSectionLabel(
+                    label: 'Enviados en esta sesión',
+                    trailing: Text(
+                      '${widget.controller.sentMessages.length}',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  if (widget.controller.sentMessages.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Text(
+                        'Todavía no enviaste nada en esta sesión.',
+                        style: theme.textTheme.bodySmall,
                       ),
-                const SizedBox(height: 16),
-                Text(
-                  'Los mensajes viajan cifrados (X25519 + ChaCha20-Poly1305) y '
-                  'solo a PCs emparejadas. La PC los guarda en su historial '
-                  'SQLite.',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.outline,
-                      ),
-                ),
+                    )
+                  else
+                    ...widget.controller.sentMessages.take(10).map(
+                          (message) => _SentRow(message: message),
+                        ),
+                  const SizedBox(height: 20),
+                  Text(
+                    'Los mensajes viajan cifrados (X25519 + ChaCha20-Poly1305) '
+                    'y solo a PCs emparejadas. La PC los guarda en su historial '
+                    'SQLite.',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: JScanColors.textMuted,
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         );
       },
@@ -204,43 +225,8 @@ class _SendTextScreenState extends State<SendTextScreen> {
   }
 }
 
-class _NoServersCard extends StatelessWidget {
-  const _NoServersCard();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: <Widget>[
-            Icon(
-              Icons.link_off,
-              size: 48,
-              color: theme.colorScheme.outline,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Primero empareja una PC',
-              style: theme.textTheme.titleMedium,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Vuelve al inicio y escanea el QR que muestra J-SCAN en la PC.',
-              style: theme.textTheme.bodySmall,
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DestinationCard extends StatelessWidget {
-  const _DestinationCard({
+class _DestinationPanel extends StatelessWidget {
+  const _DestinationPanel({
     required this.servers,
     required this.selectedId,
     required this.enabled,
@@ -254,37 +240,36 @@ class _DestinationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: DropdownButtonFormField<String>(
-          initialValue: selectedId,
-          isExpanded: true,
-          decoration: const InputDecoration(
-            labelText: 'PC de destino',
-            border: OutlineInputBorder(),
-            prefixIcon: Icon(Icons.computer),
-          ),
-          items: servers
-              .map(
-                (server) => DropdownMenuItem<String>(
-                  value: server.serverId,
-                  child: Text(
-                    '${server.name} · ${server.host}:${server.port}',
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              )
-              .toList(),
-          onChanged: enabled ? onChanged : null,
+    return JScanSection(
+      icon: Icons.computer,
+      title: 'Destino',
+      subtitle: 'Solo se puede enviar a PCs autorizadas.',
+      child: DropdownButtonFormField<String>(
+        initialValue: selectedId,
+        isExpanded: true,
+        decoration: const InputDecoration(
+          labelText: 'PC de destino',
+          prefixIcon: Icon(Icons.lan_outlined),
         ),
+        items: servers
+            .map(
+              (server) => DropdownMenuItem<String>(
+                value: server.serverId,
+                child: Text(
+                  '${server.name} · ${server.host}:${server.port}',
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            )
+            .toList(),
+        onChanged: enabled ? onChanged : null,
       ),
     );
   }
 }
 
-class _ComposerCard extends StatelessWidget {
-  const _ComposerCard({
+class _ComposerPanel extends StatelessWidget {
+  const _ComposerPanel({
     required this.controller,
     required this.busy,
     required this.onSend,
@@ -301,126 +286,81 @@ class _ComposerCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text('Texto o enlace', style: theme.textTheme.titleSmall),
-            const SizedBox(height: 8),
-            TextField(
-              controller: controller,
-              minLines: 4,
-              maxLines: 10,
-              enabled: !busy,
-              keyboardType: TextInputType.multiline,
-              textInputAction: TextInputAction.newline,
-              decoration: const InputDecoration(
-                hintText: 'Escribe un mensaje o pega una URL…',
-                border: OutlineInputBorder(),
-                alignLabelWithHint: true,
+    return JScanSection(
+      icon: Icons.edit_note_outlined,
+      title: 'Mensaje',
+      subtitle: 'Texto libre, enlaces o el contenido del portapapeles.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          TextField(
+            controller: controller,
+            minLines: 5,
+            maxLines: 12,
+            enabled: !busy,
+            keyboardType: TextInputType.multiline,
+            textInputAction: TextInputAction.newline,
+            style: theme.textTheme.bodyMedium,
+            decoration: const InputDecoration(
+              hintText: 'Escribe un mensaje o pega una URL…',
+              alignLabelWithHint: true,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[
+              FilledButton.icon(
+                onPressed: busy ? null : onSend,
+                icon: busy
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.send, size: 18),
+                label: const Text('Enviar texto'),
               ),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: <Widget>[
-                FilledButton.icon(
-                  onPressed: busy ? null : onSend,
-                  icon: busy
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.send),
-                  label: const Text('Enviar texto'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: busy ? null : onPasteClipboard,
-                  icon: const Icon(Icons.content_paste),
-                  label: const Text('Pegar portapapeles'),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: busy ? null : onSendClipboard,
-                  icon: const Icon(Icons.content_paste_go),
-                  label: const Text('Enviar portapapeles'),
-                ),
-              ],
-            ),
-          ],
-        ),
+              OutlinedButton.icon(
+                onPressed: busy ? null : onPasteClipboard,
+                icon: const Icon(Icons.content_paste, size: 18),
+                label: const Text('Pegar portapapeles'),
+              ),
+              OutlinedButton.icon(
+                onPressed: busy ? null : onSendClipboard,
+                icon: const Icon(Icons.content_paste_go, size: 18),
+                label: const Text('Enviar portapapeles'),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 }
 
-class _ResultCard extends StatelessWidget {
-  const _ResultCard({required this.result});
+class _ResultBanner extends StatelessWidget {
+  const _ResultBanner({required this.result});
 
   final SendResult result;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final ok = result.ok;
-    return Card(
-      color: ok
-          ? theme.colorScheme.secondaryContainer
-          : theme.colorScheme.errorContainer,
-      child: ListTile(
-        leading: Icon(
-          ok ? Icons.check_circle : Icons.error_outline,
-          color: ok
-              ? theme.colorScheme.onSecondaryContainer
-              : theme.colorScheme.onErrorContainer,
-        ),
-        title: Text(
-          ok ? 'Entregado a ${result.serverName}' : 'Error de envío',
-          style: TextStyle(
-            color: ok
-                ? theme.colorScheme.onSecondaryContainer
-                : theme.colorScheme.onErrorContainer,
-          ),
-        ),
-        subtitle: Text(
-          ok
-              ? 'Confirmado por la PC en ${result.elapsedMs} ms'
-                  '${result.delivery == null ? '' : ' · ${result.delivery!.historyId}'}'
-              : result.error ?? 'Error desconocido',
-          style: TextStyle(
-            color: ok
-                ? theme.colorScheme.onSecondaryContainer
-                : theme.colorScheme.onErrorContainer,
-          ),
-        ),
-      ),
+    return JScanBanner(
+      tone: ok ? JScanTone.success : JScanTone.danger,
+      title: ok ? 'Entregado a ${result.serverName}' : 'Error de envío',
+      message: ok
+          ? 'Confirmado por la PC en ${result.elapsedMs} ms'
+              '${result.delivery == null ? '' : ' · ${result.delivery!.historyId}'}'
+          : result.error ?? 'Error desconocido',
     );
   }
 }
 
-class _SentHeader extends StatelessWidget {
-  const _SentHeader({required this.count});
-
-  final int count;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: <Widget>[
-        Text('Enviados en esta sesión',
-            style: Theme.of(context).textTheme.titleSmall),
-        const Spacer(),
-        Text('$count', style: Theme.of(context).textTheme.bodySmall),
-      ],
-    );
-  }
-}
-
-class _SentTile extends StatelessWidget {
-  const _SentTile({required this.message});
+class _SentRow extends StatelessWidget {
+  const _SentRow({required this.message});
 
   final SentMessage message;
 
@@ -428,25 +368,48 @@ class _SentTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final ok = message.result.ok;
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      dense: true,
-      leading: Icon(
-        ok ? Icons.check_circle_outline : Icons.error_outline,
-        color: ok ? Colors.green : theme.colorScheme.error,
-      ),
-      title: Text(
-        message.text.replaceAll(RegExp(r'\s+'), ' ').trim(),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      subtitle: Text(
-        '${message.kind == HistoryKind.clipboard ? 'Portapapeles' : 'Texto'} · '
-        '${message.serverName} · ${_formatTime(message.sentAt)}'
-        '${ok ? ' · ${message.result.elapsedMs} ms' : ' · ${message.result.error}'}',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
+    return Column(
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Icon(
+                ok ? Icons.check_circle_outline : Icons.error_outline,
+                size: 18,
+                color: ok ? JScanColors.success : JScanColors.danger,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      message.text.replaceAll(RegExp(r'\s+'), ' ').trim(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${message.kind == HistoryKind.clipboard ? 'Portapapeles' : 'Texto'} · '
+                      '${message.serverName} · ${_formatTime(message.sentAt)}'
+                      '${ok ? ' · ${message.result.elapsedMs} ms' : ' · ${message.result.error}'}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: JScanColors.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Divider(),
+      ],
     );
   }
 }

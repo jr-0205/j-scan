@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:jscan_core/jscan_core.dart';
+import 'package:jscan_ui/jscan_ui.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../discovery_controller.dart';
@@ -110,7 +111,7 @@ class _QrScanScreenState extends State<QrScanScreen> {
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
+        foregroundColor: JScanColors.textPrimary,
         title: const Text('Escanear QR de la PC'),
         actions: <Widget>[
           ValueListenableBuilder<MobileScannerState>(
@@ -155,10 +156,13 @@ class _QrScanScreenState extends State<QrScanScreen> {
                         ),
                       ),
                       const SizedBox(height: 20),
-                      const Text(
+                      Text(
                         'Apunta al QR que muestra J-SCAN en la PC',
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white, fontSize: 15),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: JScanColors.textPrimary,
+                              fontWeight: FontWeight.w500,
+                            ),
                       ),
                     ],
                   ),
@@ -167,19 +171,22 @@ class _QrScanScreenState extends State<QrScanScreen> {
             },
           ),
           if (_busy)
-            Container(
-              color: Colors.black54,
-              alignment: Alignment.center,
-              child: const Column(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text(
-                    'Emparejando… confirma en la PC',
-                    style: TextStyle(color: Colors.white),
+            ColoredBox(
+              color: JScanColors.background.withValues(alpha: 0.86),
+              child: Center(
+                child: JScanPanel(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      const CircularProgressIndicator(),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Emparejando… confirma en la PC',
+                        style: theme.textTheme.titleSmall,
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           if (_error != null)
@@ -187,37 +194,14 @@ class _QrScanScreenState extends State<QrScanScreen> {
               left: 16,
               right: 16,
               bottom: 104,
-              child: Material(
-                color: theme.colorScheme.errorContainer,
-                borderRadius: BorderRadius.circular(12),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Icon(
-                        Icons.error_outline,
-                        color: theme.colorScheme.onErrorContainer,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _error!,
-                          style: TextStyle(
-                            color: theme.colorScheme.onErrorContainer,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Cerrar aviso',
-                        onPressed: () => setState(() => _error = null),
-                        icon: Icon(
-                          Icons.close,
-                          color: theme.colorScheme.onErrorContainer,
-                        ),
-                      ),
-                    ],
-                  ),
+              child: JScanBanner(
+                tone: JScanTone.danger,
+                title: 'No se pudo emparejar',
+                message: _error!,
+                action: IconButton(
+                  tooltip: 'Cerrar aviso',
+                  onPressed: () => setState(() => _error = null),
+                  icon: const Icon(Icons.close),
                 ),
               ),
             ),
@@ -227,9 +211,9 @@ class _QrScanScreenState extends State<QrScanScreen> {
             bottom: 24,
             child: SafeArea(
               top: false,
-              child: FilledButton.tonalIcon(
+              child: FilledButton.icon(
                 onPressed: _busy ? null : _pasteCode,
-                icon: const Icon(Icons.keyboard),
+                icon: const Icon(Icons.keyboard, size: 18),
                 label: const Text('Pegar código en su lugar'),
               ),
             ),
@@ -247,6 +231,7 @@ class _CameraError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return ColoredBox(
       color: Colors.black,
       child: Center(
@@ -255,33 +240,30 @@ class _CameraError extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              const Icon(
-                Icons.no_photography_outlined,
+              const JScanIconBadge(
+                icon: Icons.no_photography_outlined,
                 size: 56,
-                color: Colors.white70,
               ),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 'No se pudo abrir la cámara',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: theme.textTheme.titleLarge,
               ),
               const SizedBox(height: 8),
               Text(
                 'Revisa el permiso de cámara en los ajustes del sistema.\n'
                 '${error.errorCode.name}: ${error.errorDetails?.message ?? ''}',
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white70),
+                style: theme.textTheme.bodySmall,
               ),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 'Mientras tanto, puedes usar «Pegar código en su lugar».',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white70),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: JScanColors.textMuted,
+                ),
               ),
             ],
           ),

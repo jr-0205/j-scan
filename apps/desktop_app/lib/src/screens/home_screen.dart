@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:jscan_core/jscan_core.dart';
+import 'package:jscan_ui/jscan_ui.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../server_controller.dart';
@@ -95,61 +96,59 @@ class _HomeScreenState extends State<HomeScreen> {
         return Scaffold(
           appBar: AppBar(
             titleSpacing: 20,
-            title: Row(
-              children: <Widget>[
-                Icon(
-                  Icons.sensors,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-                const SizedBox(width: 10),
-                const Text('J-SCAN'),
-                const SizedBox(width: 12),
-                Text(
-                  'Servidor local',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.outline,
-                      ),
-                ),
-              ],
-            ),
+            title: const JScanBrand(subtitle: 'Windows · servidor local'),
             actions: <Widget>[
               if (controller.status == ServerStatus.running)
                 Padding(
-                  padding: const EdgeInsets.only(right: 16),
-                  child: Chip(
-                    avatar: const Icon(Icons.lock_outline, size: 16),
-                    label: Text(
-                      '${controller.pairedDevices.length} emparejado'
-                      '${controller.pairedDevices.length == 1 ? '' : 's'}',
-                    ),
+                  padding: const EdgeInsets.only(right: 20),
+                  child: JScanStatusPill(
+                    label: '${controller.pairedDevices.length} emparejado'
+                        '${controller.pairedDevices.length == 1 ? '' : 's'}',
+                    tone: JScanTone.success,
+                    icon: Icons.lock_outline,
                   ),
                 ),
             ],
           ),
-          body: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 860),
-              child: ListView(
-                padding: const EdgeInsets.all(20),
-                children: <Widget>[
-                  if (controller.status == ServerStatus.error)
-                    _ErrorCard(controller: controller),
-                  _StatusCard(controller: controller),
-                  const SizedBox(height: 16),
-                  _PairingCard(controller: controller),
-                  const SizedBox(height: 16),
-                  InboxCard(controller: controller),
-                  const SizedBox(height: 16),
-                  FilesCard(controller: controller),
-                  const SizedBox(height: 16),
-                  _PairedDevicesCard(controller: controller),
-                  const SizedBox(height: 16),
-                  _DevicesCard(controller: controller),
-                  const SizedBox(height: 16),
-                  _ActivityCard(controller: controller),
-                  const SizedBox(height: 16),
-                  const _SprintNote(),
-                ],
+          body: SafeArea(
+            top: false,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxWidth: JScanMetrics.maxContentWidth,
+                ),
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+                  children: <Widget>[
+                    if (controller.status == ServerStatus.error) ...<Widget>[
+                      _ErrorBanner(controller: controller),
+                      const SizedBox(height: 14),
+                    ],
+                    _StatusPanel(controller: controller),
+                    const SizedBox(height: 14),
+                    _PairingPanel(controller: controller),
+                    const SizedBox(height: 14),
+                    InboxCard(controller: controller),
+                    const SizedBox(height: 14),
+                    FilesCard(controller: controller),
+                    const SizedBox(height: 14),
+                    _PairedDevicesPanel(controller: controller),
+                    const SizedBox(height: 14),
+                    _SessionsPanel(controller: controller),
+                    const SizedBox(height: 14),
+                    _ActivityPanel(controller: controller),
+                    const SizedBox(height: 24),
+                    Text(
+                      'J-SCAN · archivos, fotos y videos cifrados por Wi-Fi, '
+                      'con progreso, reanudación, SHA-256 y carpeta de destino '
+                      'configurable.',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: JScanColors.textMuted,
+                          ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -159,8 +158,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class _StatusCard extends StatelessWidget {
-  const _StatusCard({required this.controller});
+class _StatusPanel extends StatelessWidget {
+  const _StatusPanel({required this.controller});
 
   final ServerController controller;
 
@@ -169,93 +168,94 @@ class _StatusCard extends StatelessWidget {
     final theme = Theme.of(context);
     final running = controller.status == ServerStatus.running;
     final starting = controller.status == ServerStatus.starting;
-    final color = running
-        ? Colors.green
+    final failed = controller.status == ServerStatus.error;
+    final tone = running
+        ? JScanTone.success
         : starting
-            ? Colors.orange
-            : theme.colorScheme.error;
-
+            ? JScanTone.warning
+            : JScanTone.danger;
+    final label = running
+        ? 'Servidor activo'
+        : starting
+            ? 'Iniciando…'
+            : failed
+                ? 'Servidor detenido'
+                : 'Detenido';
     final address = '${controller.addressLabel}:${controller.port}';
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                Icon(Icons.circle, size: 12, color: color),
-                const SizedBox(width: 8),
-                Text(
-                  running
-                      ? 'Servidor activo'
-                      : starting
-                          ? 'Iniciando…'
-                          : controller.status == ServerStatus.error
-                              ? 'Servidor detenido'
-                              : 'Detenido',
-                  style: theme.textTheme.titleMedium,
-                ),
-                const Spacer(),
-                Chip(
-                  avatar: Icon(
-                    running ? Icons.wifi_tethering : Icons.wifi_off,
-                    size: 16,
-                  ),
-                  label: Text(running ? 'mDNS activo' : 'mDNS inactivo'),
-                ),
-              ],
+    return JScanPanel(
+      accent: running,
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              JScanStatusPill(
+                label: label,
+                tone: tone,
+                busy: starting,
+              ),
+              const SizedBox(width: 8),
+              JScanStatusPill(
+                label: running ? 'mDNS activo' : 'mDNS inactivo',
+                tone: running ? JScanTone.info : JScanTone.neutral,
+                icon: running ? Icons.wifi_tethering : Icons.wifi_off,
+              ),
+              const Spacer(),
+              Text(
+                'protocolo ${JScanDefaults.protocolVersion}',
+                style: theme.textTheme.labelSmall,
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Text(
+            'ESTA PC',
+            style: theme.textTheme.labelSmall?.copyWith(
+              letterSpacing: 1.2,
             ),
-            const SizedBox(height: 16),
-            Text('Esta PC', style: theme.textTheme.labelLarge),
-            const SizedBox(height: 4),
-            Text(controller.displayName, style: theme.textTheme.headlineSmall),
-            const SizedBox(height: 12),
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: SelectableText(
-                    address,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontFamily: 'Consolas',
-                      fontFamilyFallback: const <String>['monospace'],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            controller.displayName,
+            style: theme.textTheme.headlineMedium,
+          ),
+          const SizedBox(height: 12),
+          JScanCodeBlock(
+            value: address,
+            maxLines: 1,
+            trailing: IconButton(
+              tooltip: 'Copiar dirección',
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: address));
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Dirección copiada'),
+                      duration: Duration(seconds: 1),
                     ),
-                  ),
-                ),
-                IconButton.filledTonal(
-                  tooltip: 'Copiar dirección',
-                  onPressed: () async {
-                    await Clipboard.setData(ClipboardData(text: address));
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Dirección copiada'),
-                          duration: Duration(seconds: 1),
-                        ),
-                      );
-                    }
-                  },
-                  icon: const Icon(Icons.copy),
-                ),
-              ],
+                  );
+                }
+              },
+              icon: const Icon(Icons.copy, size: 18),
             ),
-            const SizedBox(height: 4),
-            Text(
-              'ID ${controller.serverId} · protocolo '
-              '${JScanDefaults.protocolVersion} · cifrado X25519 + '
-              'ChaCha20-Poly1305',
-              style: theme.textTheme.bodySmall,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'ID ${controller.serverId} · cifrado X25519 + ChaCha20-Poly1305',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: JScanColors.textMuted,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _PairingCard extends StatelessWidget {
-  const _PairingCard({required this.controller});
+class _PairingPanel extends StatelessWidget {
+  const _PairingPanel({required this.controller});
 
   final ServerController controller;
 
@@ -265,170 +265,151 @@ class _PairingCard extends StatelessWidget {
     final running = controller.status == ServerStatus.running;
     final code = controller.pairingCode;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                const Icon(Icons.qr_code_2),
-                const SizedBox(width: 8),
-                Text('Emparejamiento', style: theme.textTheme.titleMedium),
-                const Spacer(),
-                if (controller.pairingOpen)
-                  Chip(
-                    avatar: const Icon(Icons.timer_outlined, size: 16),
-                    label: Text(
-                      controller.pairingExpiresAt == null
-                          ? 'Abierto'
-                          : 'Hasta ${_formatTime(controller.pairingExpiresAt!)}',
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (!running)
-              Text(
-                'Enciende el servidor para generar el QR de emparejamiento.',
-                style: theme.textTheme.bodyMedium,
-              )
-            else if (!controller.pairingOpen || code == null)
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: Text(
-                      'Muestra un QR de un solo uso. El celular lo escanea y '
-                      'esta PC te pedirá confirmación antes de autorizarlo.',
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  FilledButton.icon(
-                    onPressed: controller.openPairing,
-                    icon: const Icon(Icons.add_link),
-                    label: const Text('Emparejar dispositivo'),
-                  ),
-                ],
-              )
-            else
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final qr = Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: theme.colorScheme.outlineVariant,
+    return JScanSection(
+      icon: Icons.qr_code_2,
+      title: 'Emparejamiento',
+      subtitle: 'Un QR de un solo uso y confirmación en esta PC.',
+      tone: JScanTone.info,
+      trailing: controller.pairingOpen
+          ? JScanStatusPill(
+              label: controller.pairingExpiresAt == null
+                  ? 'Abierto'
+                  : 'Hasta ${_formatTime(controller.pairingExpiresAt!)}',
+              tone: JScanTone.info,
+              icon: Icons.timer_outlined,
+            )
+          : null,
+      child: !running
+          ? Text(
+              'Enciende el servidor para generar el QR de emparejamiento.',
+              style: theme.textTheme.bodyMedium,
+            )
+          : !controller.pairingOpen || code == null
+              ? Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: Text(
+                        'Muestra un QR de un solo uso. El celular lo escanea y '
+                        'esta PC te pedirá confirmación antes de autorizarlo.',
+                        style: theme.textTheme.bodyMedium,
                       ),
                     ),
-                    child: QrImageView(
-                      data: controller.pairingCodeText,
-                      version: QrVersions.auto,
-                      size: 200,
-                      gapless: true,
-                      backgroundColor: Colors.white,
-                      errorCorrectionLevel: QrErrorCorrectLevel.M,
-                      eyeStyle: const QrEyeStyle(
-                        eyeShape: QrEyeShape.square,
-                        color: Colors.black,
-                      ),
-                      dataModuleStyle: const QrDataModuleStyle(
-                        dataModuleShape: QrDataModuleShape.square,
-                        color: Colors.black,
-                      ),
+                    const SizedBox(width: 16),
+                    FilledButton.icon(
+                      onPressed: controller.openPairing,
+                      icon: const Icon(Icons.add_link, size: 18),
+                      label: const Text('Emparejar dispositivo'),
                     ),
-                  );
-
-                  final details = Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        'Escanea este código con J-SCAN en el celular.',
-                        style: theme.textTheme.titleSmall,
+                  ],
+                )
+              : LayoutBuilder(
+                  builder: (context, constraints) {
+                    final qr = Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius:
+                            BorderRadius.circular(JScanMetrics.radius),
+                        border: Border.all(color: JScanColors.border),
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'El código caduca solo. Al aceptar, el dispositivo '
-                        'queda autorizado y todos sus mensajes se cifran.',
-                        style: theme.textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: 12),
-                      SelectableText(
-                        controller.pairingCodeText,
-                        maxLines: 3,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          fontFamily: 'Consolas',
-                          fontFamilyFallback: const <String>['monospace'],
+                      child: QrImageView(
+                        data: controller.pairingCodeText,
+                        version: QrVersions.auto,
+                        size: 200,
+                        gapless: true,
+                        backgroundColor: Colors.white,
+                        errorCorrectionLevel: QrErrorCorrectLevel.M,
+                        eyeStyle: const QrEyeStyle(
+                          eyeShape: QrEyeShape.square,
+                          color: Colors.black,
+                        ),
+                        dataModuleStyle: const QrDataModuleStyle(
+                          dataModuleShape: QrDataModuleShape.square,
+                          color: Colors.black,
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: <Widget>[
-                          FilledButton.tonalIcon(
-                            onPressed: () async {
-                              await Clipboard.setData(
-                                ClipboardData(
-                                  text: controller.pairingCodeText,
-                                ),
-                              );
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Código copiado. Pégalo en el celular '
-                                      'o en tool/probe.dart',
-                                    ),
-                                    duration: Duration(seconds: 2),
-                                  ),
-                                );
-                              }
-                            },
-                            icon: const Icon(Icons.copy),
-                            label: const Text('Copiar código'),
-                          ),
-                          TextButton(
-                            onPressed: controller.closePairing,
-                            child: const Text('Cerrar'),
-                          ),
-                        ],
-                      ),
-                    ],
-                  );
+                    );
 
-                  if (constraints.maxWidth < 560) {
-                    return Column(
+                    final details = Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
-                        Center(child: qr),
-                        const SizedBox(height: 16),
-                        details,
+                        Text(
+                          'Escanea este código con J-SCAN en el celular.',
+                          style: theme.textTheme.titleSmall,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'El código caduca solo. Al aceptar, el dispositivo '
+                          'queda autorizado y todos sus mensajes se cifran.',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                        const SizedBox(height: 12),
+                        JScanCodeBlock(
+                          value: controller.pairingCodeText,
+                          maxLines: 3,
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: <Widget>[
+                            FilledButton.icon(
+                              onPressed: () async {
+                                await Clipboard.setData(
+                                  ClipboardData(
+                                    text: controller.pairingCodeText,
+                                  ),
+                                );
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Código copiado. Pégalo en el celular '
+                                        'o en tool/probe.dart',
+                                      ),
+                                      duration: Duration(seconds: 2),
+                                    ),
+                                  );
+                                }
+                              },
+                              icon: const Icon(Icons.copy, size: 18),
+                              label: const Text('Copiar código'),
+                            ),
+                            OutlinedButton(
+                              onPressed: controller.closePairing,
+                              child: const Text('Cerrar'),
+                            ),
+                          ],
+                        ),
                       ],
                     );
-                  }
-                  return Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      qr,
-                      const SizedBox(width: 20),
-                      Expanded(child: details),
-                    ],
-                  );
-                },
-              ),
-          ],
-        ),
-      ),
+
+                    if (constraints.maxWidth < 600) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Center(child: qr),
+                          const SizedBox(height: 16),
+                          details,
+                        ],
+                      );
+                    }
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        qr,
+                        const SizedBox(width: 20),
+                        Expanded(child: details),
+                      ],
+                    );
+                  },
+                ),
     );
   }
 }
 
-class _PairedDevicesCard extends StatelessWidget {
-  const _PairedDevicesCard({required this.controller});
+class _PairedDevicesPanel extends StatelessWidget {
+  const _PairedDevicesPanel({required this.controller});
 
   final ServerController controller;
 
@@ -437,64 +418,45 @@ class _PairedDevicesCard extends StatelessWidget {
     final theme = Theme.of(context);
     final devices = controller.pairedDevices;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
+    return JScanSection(
+      icon: Icons.verified_user_outlined,
+      title: 'Dispositivos emparejados',
+      subtitle: 'Autorizaciones vigentes para enviar a esta PC.',
+      trailing: JScanStatusPill(
+        label: '${devices.length}',
+        tone: devices.isEmpty ? JScanTone.neutral : JScanTone.success,
+      ),
+      child: devices.isEmpty
+          ? const _InlineEmpty(
+              icon: Icons.smartphone,
+              message:
+                  'Ninguno. Abre el QR y escanéalo desde el celular; la PC '
+                  'pedirá confirmación antes de autorizarlo.',
+            )
+          : Column(
               children: <Widget>[
-                const Icon(Icons.verified_user_outlined),
-                const SizedBox(width: 8),
-                Text(
-                  'Dispositivos emparejados',
-                  style: theme.textTheme.titleMedium,
+                ...devices.map(
+                  (device) => Column(
+                    children: <Widget>[
+                      _DeviceRow(
+                        device: device,
+                        onRemove: () => _confirmRemoval(context, device),
+                      ),
+                      if (device != devices.last) const Divider(),
+                    ],
+                  ),
                 ),
-                const Spacer(),
-                Badge(label: Text('${devices.length}')),
+                const SizedBox(height: 10),
+                Text(
+                  'Al eliminar un dispositivo, sus sesiones activas se cierran '
+                  'y no podrá volver a enviar mensajes hasta emparejarse de '
+                  'nuevo.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: JScanColors.textMuted,
+                  ),
+                ),
               ],
             ),
-            const SizedBox(height: 12),
-            if (devices.isEmpty)
-              Text(
-                'Ninguno. Abre el QR y escanéalo desde el celular; la PC pedirá '
-                'confirmación antes de autorizarlo.',
-                style: theme.textTheme.bodyMedium,
-              )
-            else
-              ...devices.map(
-                (device) => ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const CircleAvatar(
-                    child: Icon(Icons.smartphone),
-                  ),
-                  title: Text(device.name),
-                  subtitle: Text(
-                    '${device.platform} · ${device.deviceId} · '
-                    'emparejado ${_formatDate(device.pairedAt)}'
-                    '${device.lastSeenAt == null ? '' : ' · visto ${_formatDate(device.lastSeenAt!)}'}',
-                  ),
-                  trailing: IconButton(
-                    tooltip: 'Eliminar autorización',
-                    icon: const Icon(Icons.delete_outline),
-                    onPressed: () => _confirmRemoval(context, device),
-                  ),
-                ),
-              ),
-            if (devices.isNotEmpty) ...<Widget>[
-              const SizedBox(height: 4),
-              Text(
-                'Al eliminar un dispositivo, sus sesiones activas se cierran '
-                'y no podrá volver a enviar mensajes hasta emparejarse de nuevo.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.outline,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
     );
   }
 
@@ -528,117 +490,211 @@ class _PairedDevicesCard extends StatelessWidget {
   }
 }
 
-class _DevicesCard extends StatelessWidget {
-  const _DevicesCard({required this.controller});
+class _DeviceRow extends StatelessWidget {
+  const _DeviceRow({required this.device, required this.onRemove});
 
-  final ServerController controller;
+  final PairedDevice device;
+  final VoidCallback onRemove;
 
   @override
   Widget build(BuildContext context) {
-    final sessions = controller.sessions;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: <Widget>[
+          const JScanIconBadge(
+            icon: Icons.smartphone,
+            tone: JScanTone.info,
+            size: 36,
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                const Icon(Icons.devices),
-                const SizedBox(width: 8),
+                Text(device.name, style: theme.textTheme.titleSmall),
+                const SizedBox(height: 2),
                 Text(
-                  'Sesiones conectadas',
-                  style: Theme.of(context).textTheme.titleMedium,
+                  '${device.platform} · ${device.deviceId} · '
+                  'emparejado ${_formatDate(device.pairedAt)}'
+                  '${device.lastSeenAt == null ? '' : ' · visto ${_formatDate(device.lastSeenAt!)}'}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: JScanColors.textMuted,
+                  ),
                 ),
-                const Spacer(),
-                Badge(label: Text('${sessions.length}')),
               ],
             ),
-            const SizedBox(height: 12),
-            if (sessions.isEmpty)
-              Text(
-                'Ninguna. Cuando un celular emparejado se conecte, aparecerá '
-                'aquí con el estado de autenticación.',
-                style: Theme.of(context).textTheme.bodyMedium,
-              )
-            else
-              ...sessions.map(
-                (session) => ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(
-                    session.isAuthenticated
-                        ? Icons.lock
-                        : Icons.lock_open_outlined,
-                  ),
-                  title: Text(session.displayName),
-                  subtitle: Text(
-                    '${session.device?.platform ?? 'desconocido'} · '
-                    '${session.isAuthenticated ? 'cifrada' : 'sin autenticar'} · '
-                    'sesión ${session.id}',
-                  ),
-                  trailing: Text(_formatTime(session.connectedAt)),
-                ),
-              ),
-          ],
-        ),
+          ),
+          IconButton(
+            tooltip: 'Eliminar autorización',
+            icon: const Icon(Icons.delete_outline),
+            onPressed: onRemove,
+          ),
+        ],
       ),
     );
   }
 }
 
-class _ActivityCard extends StatelessWidget {
-  const _ActivityCard({required this.controller});
+class _SessionsPanel extends StatelessWidget {
+  const _SessionsPanel({required this.controller});
 
   final ServerController controller;
 
   @override
   Widget build(BuildContext context) {
-    final entries = controller.recentActivity;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
+    final theme = Theme.of(context);
+    final sessions = controller.sessions;
+    return JScanSection(
+      icon: Icons.devices,
+      title: 'Sesiones conectadas',
+      subtitle: 'Conexiones activas y su estado de autenticación.',
+      trailing: JScanStatusPill(
+        label: '${sessions.length}',
+        tone: sessions.isEmpty ? JScanTone.neutral : JScanTone.info,
+      ),
+      child: sessions.isEmpty
+          ? const _InlineEmpty(
+              icon: Icons.lan_outlined,
+              message:
+                  'Ninguna. Cuando un celular emparejado se conecte, aparecerá '
+                  'aquí con el estado de autenticación.',
+            )
+          : Column(
               children: <Widget>[
-                const Icon(Icons.receipt_long),
-                const SizedBox(width: 8),
-                Text(
-                  'Actividad',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (entries.isEmpty)
-              Text(
-                'Sin actividad por ahora.',
-                style: Theme.of(context).textTheme.bodyMedium,
-              )
-            else
-              ...entries.map(
-                (entry) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                ...sessions.map(
+                  (session) => Column(
                     children: <Widget>[
-                      Text(
-                        _formatTime(entry.time),
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          fontFamily: 'Consolas',
-                          fontFamilyFallback: const <String>['monospace'],
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Row(
+                          children: <Widget>[
+                            JScanIconBadge(
+                              icon: session.isAuthenticated
+                                  ? Icons.lock_outline
+                                  : Icons.lock_open_outlined,
+                              tone: session.isAuthenticated
+                                  ? JScanTone.success
+                                  : JScanTone.warning,
+                              size: 36,
+                            ),
+                            const SizedBox(width: 11),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
+                                  Text(
+                                    session.displayName,
+                                    style: theme.textTheme.titleSmall,
+                                  ),
+                                  Text(
+                                    '${session.device?.platform ?? 'desconocido'} · '
+                                    '${session.isAuthenticated ? 'cifrada' : 'sin autenticar'}',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: JScanColors.textMuted,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Text(
+                              _formatTime(session.connectedAt),
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: JScanColors.textMuted,
+                                fontFamily: 'Consolas',
+                                fontFamilyFallback: const <String>['monospace'],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(child: Text(entry.message)),
+                      if (session != sessions.last) const Divider(),
                     ],
                   ),
                 ),
-              ),
-          ],
+              ],
+            ),
+    );
+  }
+}
+
+class _ActivityPanel extends StatelessWidget {
+  const _ActivityPanel({required this.controller});
+
+  final ServerController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final entries = controller.recentActivity;
+    return JScanSection(
+      icon: Icons.receipt_long_outlined,
+      title: 'Actividad',
+      subtitle: 'Últimos eventos del servidor local.',
+      child: entries.isEmpty
+          ? const _InlineEmpty(
+              icon: Icons.history,
+              message: 'Sin actividad por ahora.',
+            )
+          : Column(
+              children: <Widget>[
+                ...entries.map(
+                  (entry) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          _formatTime(entry.time),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: JScanColors.textMuted,
+                            fontFamily: 'Consolas',
+                            fontFamilyFallback: const <String>['monospace'],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            entry.message,
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+class _InlineEmpty extends StatelessWidget {
+  const _InlineEmpty({required this.icon, required this.message});
+
+  final IconData icon;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Icon(icon, size: 18, color: JScanColors.textMuted),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            message,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: JScanColors.textSecondary,
+            ),
+          ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -670,12 +726,11 @@ class _PairingConfirmDialog extends StatelessWidget {
             value: _formatTime(request.requestedAt),
           ),
           const SizedBox(height: 16),
-          Text(
-            'Acepta solo si tú abriste el emparejamiento y reconoces este '
-            'dispositivo.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.error,
-            ),
+          const JScanBanner(
+            tone: JScanTone.warning,
+            message:
+                'Acepta solo si tú abriste el emparejamiento y reconoces este '
+                'dispositivo.',
           ),
         ],
       ),
@@ -701,83 +756,25 @@ class _InfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          SizedBox(
-            width: 100,
-            child: Text(
-              label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.outline,
-              ),
-            ),
-          ),
-          Expanded(
-            child: SelectableText(
-              value,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontFamily: 'Consolas',
-                fontFamilyFallback: const <String>['monospace'],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+    return JScanKeyValue(label: label, value: value, wrap: true);
   }
 }
 
-class _ErrorCard extends StatelessWidget {
-  const _ErrorCard({required this.controller});
+class _ErrorBanner extends StatelessWidget {
+  const _ErrorBanner({required this.controller});
 
   final ServerController controller;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      color: theme.colorScheme.errorContainer,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Row(
-          children: <Widget>[
-            Icon(Icons.error_outline,
-                color: theme.colorScheme.onErrorContainer),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                controller.errorMessage ?? 'Error desconocido',
-                style: TextStyle(color: theme.colorScheme.onErrorContainer),
-              ),
-            ),
-            const SizedBox(width: 8),
-            FilledButton.tonal(
-              onPressed: controller.retry,
-              child: const Text('Reintentar'),
-            ),
-          ],
-        ),
+    return JScanBanner(
+      tone: JScanTone.danger,
+      title: 'No se pudo iniciar el servidor',
+      message: controller.errorMessage ?? 'Error desconocido',
+      action: FilledButton.tonal(
+        onPressed: controller.retry,
+        child: const Text('Reintentar'),
       ),
-    );
-  }
-}
-
-class _SprintNote extends StatelessWidget {
-  const _SprintNote();
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      'Sprint 4 · archivos, fotos y videos cifrados por Wi-Fi, con progreso, '
-      'reanudación, SHA-256 y carpeta de destino configurable.',
-      textAlign: TextAlign.center,
-      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context).colorScheme.outline,
-          ),
     );
   }
 }

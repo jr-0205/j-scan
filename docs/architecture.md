@@ -6,7 +6,8 @@ J-SCAN/
 │   ├── desktop_app/   Flutter Windows · servidor + QR + bandeja del sistema
 │   └── mobile_app/    Flutter Android · descubrimiento + emparejamiento + ping
 ├── packages/
-│   └── jscan_core/    Dart puro · protocolo, cifrado, servidor, cliente y mDNS
+│   ├── jscan_core/    Dart puro · protocolo, cifrado, servidor, cliente y mDNS
+│   └── jscan_ui/      Flutter · tokens, tema oscuro y componentes visuales
 ├── docs/              protocolo, wireframes y esta guía
 ├── melos.yaml         scripts del monorepo
 └── .github/           CI
@@ -23,6 +24,22 @@ dependencias de Flutter. Eso permite:
 
 Las apps solo contienen UI, ciclo de vida de la ventana/bandeja y plugins de
 plataforma (cámara, almacenamiento seguro, QR).
+
+## Sistema visual compartido
+
+`packages/jscan_ui` concentra la identidad visual de Android y Windows para que
+ambas apps no diverjan:
+
+- paleta grafito (`#0A0A0B` fondo, `#191A1E` tarjetas, `#30323A` bordes) con un
+  único azul de acción (`#4D8DDB`) y tonos semánticos desaturados;
+- tipografía, radios, alturas de control y espaciados consistentes;
+- tema oscuro único (`JScanTheme.dark()`), sin variante clara;
+- componentes base: `JScanPanel`, `JScanSection`, `JScanStatusPill`,
+  `JScanBanner`, `JScanEmptyState`, `JScanActionTile` y `JScanCodeBlock`.
+
+Las pantallas siguen usando Material 3, pero las superficies, estados y acciones
+provienen de este paquete. Los estados de carga, vacío, error y éxito se
+muestran con los mismos componentes en ambas plataformas.
 
 ## Capas
 

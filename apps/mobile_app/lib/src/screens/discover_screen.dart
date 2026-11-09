@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:jscan_core/jscan_core.dart';
+import 'package:jscan_ui/jscan_ui.dart';
 
 import '../discovery_controller.dart';
 import '../widgets/probe_result_view.dart';
@@ -47,13 +48,7 @@ class DiscoverScreen extends StatelessWidget {
         final paired = controller.pairedServers;
         return Scaffold(
           appBar: AppBar(
-            title: const Row(
-              children: <Widget>[
-                Icon(Icons.sensors),
-                SizedBox(width: 10),
-                Text('J-SCAN'),
-              ],
-            ),
+            title: const JScanBrand(subtitle: 'Android · red local'),
             actions: <Widget>[
               IconButton(
                 tooltip: 'Escanear documento',
@@ -61,24 +56,6 @@ class DiscoverScreen extends StatelessWidget {
                     ScanScreen.open(context, discovery: controller),
                 icon: const Icon(Icons.document_scanner_outlined),
               ),
-              if (paired.isNotEmpty) ...<Widget>[
-                IconButton(
-                  tooltip: 'Enviar archivos',
-                  onPressed: () => SendFileScreen.open(
-                    context,
-                    controller: controller,
-                  ),
-                  icon: const Icon(Icons.upload_file),
-                ),
-                IconButton(
-                  tooltip: 'Enviar texto',
-                  onPressed: () => SendTextScreen.open(
-                    context,
-                    controller: controller,
-                  ),
-                  icon: const Icon(Icons.send_outlined),
-                ),
-              ],
               IconButton(
                 tooltip: 'PCs emparejadas',
                 onPressed: () => PairedServersScreen.open(
@@ -96,86 +73,139 @@ class DiscoverScreen extends StatelessWidget {
                 onPressed: scanning ? null : () => controller.scan(),
                 icon: scanning
                     ? const SizedBox(
-                        width: 20,
-                        height: 20,
+                        width: 18,
+                        height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.refresh),
               ),
+              const SizedBox(width: 4),
             ],
           ),
-          body: RefreshIndicator(
-            onRefresh: controller.scan,
-            child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(16),
-              children: <Widget>[
-                const _IntroCard(),
-                const SizedBox(height: 12),
-                _StatusBar(controller: controller),
-                const SizedBox(height: 12),
-                if (!controller.ready)
-                  const _PreparingCard()
-                else ...<Widget>[
-                  _PairingActionsCard(
-                    onScan: () => _scanQr(context),
-                    onPaste: () => _pasteCode(context),
-                  ),
-                  const SizedBox(height: 12),
-                  _ScanCard(
-                    onOpen: () =>
-                        ScanScreen.open(context, discovery: controller),
-                  ),
-                  if (paired.isNotEmpty) ...<Widget>[
-                    const SizedBox(height: 12),
-                    _SendFilesCard(controller: controller),
-                    const SizedBox(height: 12),
-                    _SendTextCard(controller: controller),
-                    const SizedBox(height: 12),
-                    _PairedSummaryCard(
-                      controller: controller,
-                      onOpen: () => PairedServersScreen.open(
-                        context,
-                        controller: controller,
-                      ),
+          body: SafeArea(
+            top: false,
+            child: RefreshIndicator(
+              onRefresh: controller.scan,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: JScanMetrics.pagePadding,
+                children: <Widget>[
+                  _ConnectionHeader(controller: controller),
+                  const SizedBox(height: 14),
+                  if (!controller.ready)
+                    const _PreparingPanel()
+                  else ...<Widget>[
+                    _PairingPanel(
+                      onScan: () => _scanQr(context),
+                      onPaste: () => _pasteCode(context),
                     ),
-                  ],
-                  if (controller.pendingSharedText != null) ...<Widget>[
                     const SizedBox(height: 12),
-                    _SharedTextCard(controller: controller),
-                  ],
-                  if (controller.pendingSharedFiles.isNotEmpty) ...<Widget>[
-                    const SizedBox(height: 12),
-                    _SharedFilesCard(controller: controller),
-                  ],
-                  const SizedBox(height: 20),
-                  _PeersHeader(count: controller.peers.length),
-                  const SizedBox(height: 8),
-                  if (controller.peers.isEmpty)
-                    _EmptyState(controller: controller)
-                  else
-                    ...controller.peers.map(
-                      (peer) => Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _PeerCard(
-                          peer: peer,
-                          controller: controller,
-                          onPair: () => _scanQr(context),
+                    JScanActionTile(
+                      icon: Icons.document_scanner_outlined,
+                      title: 'Escanear documento',
+                      subtitle:
+                          'Detecta los bordes, corrige la perspectiva y permite '
+                          'varias páginas con filtros. No necesita una PC '
+                          'emparejada.',
+                      trailingLabel: 'Abrir',
+                      tone: JScanTone.info,
+                      onTap: () =>
+                          ScanScreen.open(context, discovery: controller),
+                    ),
+                    if (paired.isNotEmpty) ...<Widget>[
+                      const SizedBox(height: 20),
+                      JScanSectionLabel(
+                        label: 'Envío rápido',
+                        trailing: Text(
+                          '${paired.length} PC'
+                          '${paired.length == 1 ? '' : 's'}',
+                          style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ),
-                    ),
-                ],
-                const SizedBox(height: 24),
-                Text(
-                  'Sprint 5 · escáner con detección de bordes, corrección de '
-                  'perspectiva, varias páginas, rotación, orden y filtros. '
-                  'El cifrado y la reanudación del Sprint 4 siguen activos.',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.outline,
+                      const SizedBox(height: 8),
+                      JScanActionTile(
+                        icon: Icons.send_outlined,
+                        title: 'Texto y portapapeles',
+                        subtitle: 'Envía un mensaje o lo que tengas copiado a '
+                            '${paired.first.name}.',
+                        trailingLabel: 'Abrir',
+                        onTap: () => SendTextScreen.open(
+                          context,
+                          controller: controller,
+                        ),
                       ),
-                ),
-              ],
+                      const SizedBox(height: 10),
+                      JScanActionTile(
+                        icon: Icons.upload_file,
+                        title: 'Archivos, fotos y videos',
+                        subtitle: controller.activeFileTransfers > 0
+                            ? '${controller.activeFileTransfers} '
+                                'transferencia'
+                                '${controller.activeFileTransfers == 1 ? '' : 's'} '
+                                'en curso hacia ${paired.first.name}.'
+                            : 'Envía varios archivos con progreso y '
+                                'reanudación a ${paired.first.name}.',
+                        meta: controller.activeFileTransfers > 0
+                            ? '${controller.activeFileTransfers} activa'
+                                '${controller.activeFileTransfers == 1 ? '' : 's'}'
+                            : null,
+                        trailingLabel: controller.activeFileTransfers > 0
+                            ? 'Ver'
+                            : 'Abrir',
+                        onTap: () => SendFileScreen.open(
+                          context,
+                          controller: controller,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _PairedSummaryPanel(
+                        controller: controller,
+                        onOpen: () => PairedServersScreen.open(
+                          context,
+                          controller: controller,
+                        ),
+                      ),
+                    ],
+                    if (controller.pendingSharedText != null) ...<Widget>[
+                      const SizedBox(height: 12),
+                      _SharedTextPanel(controller: controller),
+                    ],
+                    if (controller.pendingSharedFiles.isNotEmpty) ...<Widget>[
+                      const SizedBox(height: 12),
+                      _SharedFilesPanel(controller: controller),
+                    ],
+                    const SizedBox(height: 24),
+                    _PeersHeader(
+                      count: controller.peers.length,
+                      scanning: scanning,
+                    ),
+                    const SizedBox(height: 8),
+                    if (controller.peers.isEmpty)
+                      _EmptyState(controller: controller)
+                    else
+                      ...controller.peers.map(
+                        (peer) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _PeerCard(
+                            peer: peer,
+                            controller: controller,
+                            onPair: () => _scanQr(context),
+                          ),
+                        ),
+                      ),
+                  ],
+                  const SizedBox(height: 28),
+                  Text(
+                    'Escáner con detección de bordes, corrección de perspectiva, '
+                    'varias páginas, rotación, orden y filtros. Los envíos van '
+                    'cifrados y se reanudan si el Wi-Fi se corta.',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: JScanColors.textMuted,
+                        ),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -184,71 +214,8 @@ class DiscoverScreen extends StatelessWidget {
   }
 }
 
-class _IntroCard extends StatelessWidget {
-  const _IntroCard();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Icon(Icons.wifi, color: theme.colorScheme.primary),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    'Misma red Wi-Fi',
-                    style: theme.textTheme.titleSmall,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Abre J-SCAN en la PC y conecta el celular a la misma red. '
-                    'El descubrimiento usa mDNS y el emparejamiento se hace '
-                    'una sola vez por PC.',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PreparingCard extends StatelessWidget {
-  const _PreparingCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Card(
-      child: Padding(
-        padding: EdgeInsets.all(24),
-        child: Row(
-          children: <Widget>[
-            SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-            SizedBox(width: 12),
-            Expanded(child: Text('Preparando la identidad segura…')),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _StatusBar extends StatelessWidget {
-  const _StatusBar({required this.controller});
+class _ConnectionHeader extends StatelessWidget {
+  const _ConnectionHeader({required this.controller});
 
   final DiscoveryController controller;
 
@@ -259,7 +226,15 @@ class _StatusBar extends StatelessWidget {
     final error = controller.status == ScanStatus.error ||
         controller.errorMessage != null;
 
-    final label = scanning
+    final (JScanTone tone, String label) = scanning
+        ? (JScanTone.info, 'Buscando PCs…')
+        : error
+            ? (JScanTone.danger, 'Revisa la conexión')
+            : controller.lastScan == null
+                ? (JScanTone.neutral, 'Listo')
+                : (JScanTone.success, 'Red revisada');
+
+    final detail = scanning
         ? 'Buscando PCs en la red…'
         : error
             ? controller.errorMessage ?? 'Error de descubrimiento'
@@ -267,41 +242,110 @@ class _StatusBar extends StatelessWidget {
                 ? 'Aún no se ha buscado'
                 : 'Última búsqueda: ${_formatTime(controller.lastScan!)}';
 
-    return Row(
-      children: <Widget>[
-        if (scanning)
-          const SizedBox(
-            width: 14,
-            height: 14,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          )
-        else
-          Icon(
-            error ? Icons.error_outline : Icons.check_circle_outline,
-            size: 16,
-            color: error ? theme.colorScheme.error : Colors.green,
+    return JScanPanel(
+      padding: const EdgeInsets.all(18),
+      accent: scanning,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: JScanStatusPill(
+                    label: label,
+                    tone: tone,
+                    busy: scanning,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${controller.peers.length} PC'
+                '${controller.peers.length == 1 ? '' : 's'}',
+                style: theme.textTheme.titleSmall,
+              ),
+            ],
           ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            label,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: error ? theme.colorScheme.error : null,
-            ),
+          const SizedBox(height: 14),
+          Text(
+            'Misma red Wi-Fi',
+            style: theme.textTheme.headlineSmall,
           ),
-        ),
-        Text(
-          '${controller.peers.length} PC'
-          '${controller.peers.length == 1 ? '' : 's'}',
-          style: theme.textTheme.bodySmall,
-        ),
-      ],
+          const SizedBox(height: 6),
+          Text(
+            'Abre J-SCAN en la PC y conecta el celular a la misma red. '
+            'El descubrimiento usa mDNS y el emparejamiento se hace una sola '
+            'vez por PC.',
+            style: theme.textTheme.bodySmall,
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: <Widget>[
+              FilledButton.icon(
+                onPressed: scanning ? null : () => controller.scan(),
+                icon: const Icon(Icons.search, size: 18),
+                label: const Text('Buscar PCs'),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  detail,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: error ? JScanColors.danger : JScanColors.textMuted,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
 
-class _PairingActionsCard extends StatelessWidget {
-  const _PairingActionsCard({
+class _PreparingPanel extends StatelessWidget {
+  const _PreparingPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    return JScanPanel(
+      child: Row(
+        children: <Widget>[
+          const SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  'Preparando la identidad segura…',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Se generan las claves del dispositivo antes de permitir '
+                  'envíos cifrados.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PairingPanel extends StatelessWidget {
+  const _PairingPanel({
     required this.onScan,
     required this.onPaste,
   });
@@ -312,86 +356,44 @@ class _PairingActionsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                const Icon(Icons.qr_code_2),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Emparejar con la PC',
-                    style: theme.textTheme.titleMedium,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'En la PC pulsa «Emparejar dispositivo». Escanea el QR o pega '
-              'el código; la PC te pedirá confirmación antes de autorizar '
-              'este celular.',
-              style: theme.textTheme.bodySmall,
-            ),
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: <Widget>[
-                FilledButton.icon(
-                  onPressed: onScan,
-                  icon: const Icon(Icons.qr_code_scanner),
-                  label: const Text('Escanear QR'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: onPaste,
-                  icon: const Icon(Icons.keyboard),
-                  label: const Text('Pegar código'),
-                ),
-              ],
-            ),
-          ],
-        ),
+    return JScanSection(
+      icon: Icons.qr_code_2,
+      title: 'Emparejar con la PC',
+      subtitle: 'Una sola vez por PC. La PC confirma antes de autorizar.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            'En la PC pulsa «Emparejar dispositivo». Escanea el QR o pega '
+            'el código; la PC te pedirá confirmación antes de autorizar '
+            'este celular.',
+            style: theme.textTheme.bodySmall,
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[
+              FilledButton.icon(
+                onPressed: onScan,
+                icon: const Icon(Icons.qr_code_scanner, size: 18),
+                label: const Text('Escanear QR'),
+              ),
+              OutlinedButton.icon(
+                onPressed: onPaste,
+                icon: const Icon(Icons.keyboard, size: 18),
+                label: const Text('Pegar código'),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 }
 
-class _ScanCard extends StatelessWidget {
-  const _ScanCard({required this.onOpen});
-
-  final VoidCallback onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        leading: Icon(
-          Icons.document_scanner_outlined,
-          color: theme.colorScheme.primary,
-        ),
-        title: const Text('Escanear documento'),
-        subtitle: const Text(
-          'Detecta los bordes, corrige la perspectiva y permite varias páginas '
-          'con filtros. No necesita una PC emparejada.',
-        ),
-        trailing: FilledButton.tonal(
-          onPressed: onOpen,
-          child: const Text('Abrir'),
-        ),
-      ),
-    );
-  }
-}
-
-class _PairedSummaryCard extends StatelessWidget {
-  const _PairedSummaryCard({
+class _PairedSummaryPanel extends StatelessWidget {
+  const _PairedSummaryPanel({
     required this.controller,
     required this.onOpen,
   });
@@ -403,94 +405,47 @@ class _PairedSummaryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final servers = controller.pairedServers;
-    return Card(
-      color: theme.colorScheme.secondaryContainer,
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        leading: Icon(
-          Icons.verified_user,
-          color: theme.colorScheme.onSecondaryContainer,
-        ),
-        title: Text(
-          '${servers.length} PC'
-          '${servers.length == 1 ? '' : 's'} emparejada'
-          '${servers.length == 1 ? '' : 's'}',
-          style: TextStyle(color: theme.colorScheme.onSecondaryContainer),
-        ),
-        subtitle: Text(
-          servers.map((server) => server.name).join(', '),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(color: theme.colorScheme.onSecondaryContainer),
-        ),
-        trailing: TextButton(
-          onPressed: onOpen,
-          child: const Text('Ver'),
-        ),
+    return JScanPanel(
+      padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+      child: Row(
+        children: <Widget>[
+          const JScanIconBadge(
+            icon: Icons.verified_user_outlined,
+            tone: JScanTone.success,
+            size: 34,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  '${servers.length} PC'
+                  '${servers.length == 1 ? '' : 's'} emparejada'
+                  '${servers.length == 1 ? '' : 's'}',
+                  style: theme.textTheme.titleSmall,
+                ),
+                Text(
+                  servers.map((server) => server.name).join(', '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: onOpen,
+            child: const Text('Ver'),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _SendTextCard extends StatelessWidget {
-  const _SendTextCard({required this.controller});
-
-  final DiscoveryController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final target = controller.pairedServers.first;
-    return Card(
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        leading: Icon(Icons.send, color: theme.colorScheme.primary),
-        title: const Text('Texto y portapapeles'),
-        subtitle: Text(
-          'Envía un mensaje o lo que tengas copiado a ${target.name}.',
-        ),
-        trailing: FilledButton.tonal(
-          onPressed: () => SendTextScreen.open(context, controller: controller),
-          child: const Text('Abrir'),
-        ),
-      ),
-    );
-  }
-}
-
-class _SendFilesCard extends StatelessWidget {
-  const _SendFilesCard({required this.controller});
-
-  final DiscoveryController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final target = controller.pairedServers.first;
-    final active = controller.activeFileTransfers;
-    return Card(
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        leading: Icon(Icons.upload_file, color: theme.colorScheme.primary),
-        title: const Text('Archivos, fotos y videos'),
-        subtitle: Text(
-          active > 0
-              ? '$active transferencia${active == 1 ? '' : 's'} en curso '
-                  'hacia $target.name.'
-              : 'Envía varios archivos con progreso y reanudación a '
-                  '${target.name}.',
-        ),
-        trailing: FilledButton.tonal(
-          onPressed: () => SendFileScreen.open(context, controller: controller),
-          child: Text(active > 0 ? 'Ver' : 'Abrir'),
-        ),
-      ),
-    );
-  }
-}
-
-class _SharedFilesCard extends StatelessWidget {
-  const _SharedFilesCard({required this.controller});
+class _SharedFilesPanel extends StatelessWidget {
+  const _SharedFilesPanel({required this.controller});
 
   final DiscoveryController controller;
 
@@ -498,65 +453,60 @@ class _SharedFilesCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final paths = controller.pendingSharedFiles;
-    return Card(
-      color: theme.colorScheme.tertiaryContainer,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                Icon(
-                  Icons.ios_share,
-                  color: theme.colorScheme.onTertiaryContainer,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '${paths.length} archivo${paths.length == 1 ? '' : 's'} '
-                    'compartido${paths.length == 1 ? '' : 's'} desde otra app',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      color: theme.colorScheme.onTertiaryContainer,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              paths.take(3).map(_fileName).join(', '),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onTertiaryContainer,
+    return JScanPanel(
+      color: JScanTone.info.surface,
+      borderColor: JScanTone.info.border,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              const JScanIconBadge(
+                icon: Icons.ios_share,
+                tone: JScanTone.info,
+                size: 34,
               ),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: <Widget>[
-                FilledButton(
-                  onPressed: () {
-                    final pending = List<String>.of(paths);
-                    controller.clearPendingSharedFiles();
-                    SendFileScreen.open(
-                      context,
-                      controller: controller,
-                      initialPaths: pending,
-                    );
-                  },
-                  child: const Text('Elegir PC y enviar'),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '${paths.length} archivo${paths.length == 1 ? '' : 's'} '
+                  'compartido${paths.length == 1 ? '' : 's'} desde otra app',
+                  style: theme.textTheme.titleSmall,
                 ),
-                TextButton(
-                  onPressed: controller.clearPendingSharedFiles,
-                  child: const Text('Descartar'),
-                ),
-              ],
-            ),
-          ],
-        ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            paths.take(3).map(_fileName).join(', '),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall,
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[
+              FilledButton(
+                onPressed: () {
+                  final pending = List<String>.of(paths);
+                  controller.clearPendingSharedFiles();
+                  SendFileScreen.open(
+                    context,
+                    controller: controller,
+                    initialPaths: pending,
+                  );
+                },
+                child: const Text('Elegir PC y enviar'),
+              ),
+              TextButton(
+                onPressed: controller.clearPendingSharedFiles,
+                child: const Text('Descartar'),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -567,8 +517,8 @@ String _fileName(String path) {
   return parts.isEmpty ? path : parts.last;
 }
 
-class _SharedTextCard extends StatelessWidget {
-  const _SharedTextCard({required this.controller});
+class _SharedTextPanel extends StatelessWidget {
+  const _SharedTextPanel({required this.controller});
 
   final DiscoveryController controller;
 
@@ -577,84 +527,79 @@ class _SharedTextCard extends StatelessWidget {
     final theme = Theme.of(context);
     final text = controller.pendingSharedText ?? '';
     final preview = text.replaceAll(RegExp(r'\s+'), ' ').trim();
-    return Card(
-      color: theme.colorScheme.tertiaryContainer,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                Icon(
-                  Icons.ios_share,
-                  color: theme.colorScheme.onTertiaryContainer,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Texto compartido desde otra app',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      color: theme.colorScheme.onTertiaryContainer,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              preview.length > 160 ? '${preview.substring(0, 160)}…' : preview,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onTertiaryContainer,
+    return JScanPanel(
+      color: JScanTone.info.surface,
+      borderColor: JScanTone.info.border,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              const JScanIconBadge(
+                icon: Icons.ios_share,
+                tone: JScanTone.info,
+                size: 34,
               ),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: <Widget>[
-                FilledButton(
-                  onPressed: () {
-                    final pending = controller.pendingSharedText;
-                    controller.clearPendingSharedText();
-                    SendTextScreen.open(
-                      context,
-                      controller: controller,
-                      initialText: pending,
-                    );
-                  },
-                  child: const Text('Elegir PC y enviar'),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Texto compartido desde otra app',
+                  style: theme.textTheme.titleSmall,
                 ),
-                TextButton(
-                  onPressed: controller.clearPendingSharedText,
-                  child: const Text('Descartar'),
-                ),
-              ],
-            ),
-          ],
-        ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            preview.length > 160 ? '${preview.substring(0, 160)}…' : preview,
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[
+              FilledButton(
+                onPressed: () {
+                  final pending = controller.pendingSharedText;
+                  controller.clearPendingSharedText();
+                  SendTextScreen.open(
+                    context,
+                    controller: controller,
+                    initialText: pending,
+                  );
+                },
+                child: const Text('Elegir PC y enviar'),
+              ),
+              TextButton(
+                onPressed: controller.clearPendingSharedText,
+                child: const Text('Descartar'),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 }
 
 class _PeersHeader extends StatelessWidget {
-  const _PeersHeader({required this.count});
+  const _PeersHeader({required this.count, required this.scanning});
 
   final int count;
+  final bool scanning;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Row(
-      children: <Widget>[
-        Text('PCs en la red', style: theme.textTheme.titleSmall),
-        const Spacer(),
-        Text(
-          '$count encontrada${count == 1 ? '' : 's'}',
-          style: theme.textTheme.bodySmall,
+    return JScanSectionLabel(
+      label: 'PCs en la red',
+      trailing: Text(
+        scanning ? 'Buscando…' : '$count encontrada${count == 1 ? '' : 's'}',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: JScanColors.textMuted,
         ),
-      ],
+      ),
     );
   }
 }
@@ -666,40 +611,19 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
-        child: Column(
-          children: <Widget>[
-            Icon(
-              Icons.desktop_access_disabled,
-              size: 56,
-              color: theme.colorScheme.outline,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'No se encontró ninguna PC',
-              style: theme.textTheme.titleMedium,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Comprueba que la PC tenga J-SCAN abierto, que ambas estén en '
-              'la misma red y que el firewall permita UDP 5353 y TCP 47821. '
-              'También puedes emparejar pegando el código.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall,
-            ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: controller.status == ScanStatus.scanning
-                  ? null
-                  : () => controller.scan(),
-              icon: const Icon(Icons.search),
-              label: const Text('Buscar PC'),
-            ),
-          ],
-        ),
+    return JScanEmptyState(
+      icon: Icons.desktop_access_disabled,
+      title: 'No se encontró ninguna PC',
+      message:
+          'Comprueba que la PC tenga J-SCAN abierto, que ambas estén en la '
+          'misma red y que el firewall permita UDP 5353 y TCP 47821. '
+          'También puedes emparejar pegando el código.',
+      action: FilledButton.icon(
+        onPressed: controller.status == ScanStatus.scanning
+            ? null
+            : () => controller.scan(),
+        icon: const Icon(Icons.search, size: 18),
+        label: const Text('Buscar PC'),
       ),
     );
   }
@@ -724,70 +648,108 @@ class _PeerCard extends StatelessWidget {
     final paired = controller.serverForPeer(peer);
     final canPair = peer.isCompatible && !probing;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: CircleAvatar(
-                backgroundColor: paired != null
-                    ? theme.colorScheme.primaryContainer
-                    : theme.colorScheme.surfaceContainerHighest,
-                child: Icon(
-                  paired != null ? Icons.lock : Icons.computer,
-                  color: paired != null
-                      ? theme.colorScheme.onPrimaryContainer
-                      : theme.colorScheme.onSurfaceVariant,
-                ),
+    return JScanPanel(
+      accent: paired != null,
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              JScanIconBadge(
+                icon: paired != null ? Icons.lock_outline : Icons.computer,
+                tone: paired != null ? JScanTone.success : JScanTone.neutral,
+                size: 40,
               ),
-              title: Text(peer.name),
-              subtitle: Text(
-                '${peer.connectHost}:${peer.port} · '
-                'protocolo ${peer.protocolVersion}'
-                '${paired == null ? ' · sin emparejar' : ' · emparejada'}',
-              ),
-              trailing: paired == null
-                  ? FilledButton(
-                      onPressed: canPair ? onPair : null,
-                      child: const Text('Emparejar'),
-                    )
-                  : FilledButton.tonal(
-                      onPressed: canPair ? () => controller.probe(peer) : null,
-                      child: probing
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('Conectar'),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Text(
+                            peer.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleSmall,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        JScanStatusPill(
+                          label:
+                              paired == null ? 'Sin emparejar' : 'Autorizada',
+                          tone: paired == null
+                              ? JScanTone.neutral
+                              : JScanTone.success,
+                        ),
+                      ],
                     ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${peer.connectHost}:${peer.port} · '
+                      'protocolo ${peer.protocolVersion}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: JScanColors.textMuted,
+                        fontFamily: 'Consolas',
+                        fontFamilyFallback: const <String>['monospace'],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: <Widget>[
+              if (paired == null)
+                FilledButton.icon(
+                  onPressed: canPair ? onPair : null,
+                  icon: const Icon(Icons.add_link, size: 18),
+                  label: const Text('Emparejar'),
+                )
+              else
+                OutlinedButton.icon(
+                  onPressed: canPair ? () => controller.probe(peer) : null,
+                  icon: probing
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.lock_open, size: 18),
+                  label: Text(probing ? 'Conectando…' : 'Conectar'),
+                ),
+              const Spacer(),
+              if (!peer.isCompatible)
+                Flexible(
+                  child: Text(
+                    'Versión incompatible: actualiza J-SCAN en esta PC.',
+                    textAlign: TextAlign.end,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: JScanColors.danger,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          if (paired != null && result == null) ...<Widget>[
+            const SizedBox(height: 8),
+            Text(
+              'Toca «Conectar» para autenticar y medir el ping cifrado.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: JScanColors.textMuted,
+              ),
             ),
-            if (!peer.isCompatible)
-              Padding(
-                padding: const EdgeInsets.only(left: 4, top: 4),
-                child: Text(
-                  'Versión incompatible: actualiza J-SCAN en esta PC.',
-                  style: TextStyle(color: theme.colorScheme.error),
-                ),
-              ),
-            if (paired != null && result == null)
-              Padding(
-                padding: const EdgeInsets.only(left: 4, top: 4),
-                child: Text(
-                  'Toca «Conectar» para autenticar y medir el ping cifrado.',
-                  style: theme.textTheme.bodySmall,
-                ),
-              ),
-            if (result != null)
-              Padding(
-                padding: const EdgeInsets.only(left: 4, top: 8),
-                child: ProbeResultView(result: result),
-              ),
           ],
-        ),
+          if (result != null) ...<Widget>[
+            const SizedBox(height: 10),
+            ProbeResultView(result: result),
+          ],
+        ],
       ),
     );
   }

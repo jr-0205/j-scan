@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:jscan_core/jscan_core.dart';
+import 'package:jscan_ui/jscan_ui.dart';
 
 import '../discovery_controller.dart';
 import '../widgets/probe_result_view.dart';
@@ -36,6 +37,7 @@ class PairedServersScreen extends StatelessWidget {
       listenable: controller,
       builder: (context, _) {
         final servers = controller.pairedServers;
+        final theme = Theme.of(context);
         return Scaffold(
           appBar: AppBar(
             title: const Text('PCs emparejadas'),
@@ -45,31 +47,46 @@ class PairedServersScreen extends StatelessWidget {
                 onPressed: () => _addServer(context),
                 icon: const Icon(Icons.qr_code_scanner),
               ),
+              const SizedBox(width: 4),
             ],
           ),
-          body: ListView(
-            padding: const EdgeInsets.all(16),
-            children: <Widget>[
-              if (servers.isEmpty)
-                _EmptyServers(onAdd: () => _addServer(context))
-              else ...<Widget>[
-                Text(
-                  'Este celular solo puede enviar mensajes a estas PCs. '
-                  'La PC también puede revocar el acceso en cualquier momento.',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(height: 12),
-                ...servers.map(
-                  (server) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _ServerCard(
-                      server: server,
-                      controller: controller,
+          body: SafeArea(
+            top: false,
+            child: ListView(
+              padding: JScanMetrics.pagePadding,
+              children: <Widget>[
+                if (servers.isEmpty)
+                  JScanEmptyState(
+                    icon: Icons.phonelink_erase,
+                    title: 'Todavía no hay PCs emparejadas',
+                    message:
+                        'Abre «Emparejar dispositivo» en la PC y escanea el QR '
+                        'con este celular. La PC pedirá confirmación.',
+                    action: FilledButton.icon(
+                      onPressed: () => _addServer(context),
+                      icon: const Icon(Icons.qr_code_scanner, size: 18),
+                      label: const Text('Escanear QR'),
+                    ),
+                  )
+                else ...<Widget>[
+                  Text(
+                    'Este celular solo puede enviar mensajes a estas PCs. '
+                    'La PC también puede revocar el acceso en cualquier momento.',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 14),
+                  ...servers.map(
+                    (server) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _ServerPanel(
+                        server: server,
+                        controller: controller,
+                      ),
                     ),
                   ),
-                ),
+                ],
               ],
-            ],
+            ),
           ),
         );
       },
@@ -77,51 +94,8 @@ class PairedServersScreen extends StatelessWidget {
   }
 }
 
-class _EmptyServers extends StatelessWidget {
-  const _EmptyServers({required this.onAdd});
-
-  final VoidCallback onAdd;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
-        child: Column(
-          children: <Widget>[
-            Icon(
-              Icons.phonelink_erase,
-              size: 56,
-              color: theme.colorScheme.outline,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Todavía no hay PCs emparejadas',
-              style: theme.textTheme.titleMedium,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Abre «Emparejar dispositivo» en la PC y escanea el QR con este '
-              'celular. La PC pedirá confirmación.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall,
-            ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: onAdd,
-              icon: const Icon(Icons.qr_code_scanner),
-              label: const Text('Escanear QR'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ServerCard extends StatelessWidget {
-  const _ServerCard({required this.server, required this.controller});
+class _ServerPanel extends StatelessWidget {
+  const _ServerPanel({required this.server, required this.controller});
 
   final PairedServer server;
   final DiscoveryController controller;
@@ -131,62 +105,95 @@ class _ServerCard extends StatelessWidget {
     final theme = Theme.of(context);
     final result = controller.resultForServer(server);
     final probing = controller.isProbingServer(server);
+    final shortId = server.serverId.length > 8
+        ? server.serverId.substring(0, 8)
+        : server.serverId;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: CircleAvatar(
-                backgroundColor: theme.colorScheme.primaryContainer,
-                child: Icon(
-                  Icons.computer,
-                  color: theme.colorScheme.onPrimaryContainer,
+    return JScanPanel(
+      accent: true,
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const JScanIconBadge(
+                icon: Icons.computer,
+                tone: JScanTone.success,
+                size: 40,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Text(
+                            server.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleSmall,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const JScanStatusPill(
+                          label: 'Autorizada',
+                          tone: JScanTone.success,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'emparejada ${_formatDate(server.pairedAt)}'
+                      '${server.lastSeenAt == null ? '' : ' · vista ${_formatDate(server.lastSeenAt!)}'}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: JScanColors.textMuted,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              title: Text(server.name),
-              subtitle: Text(
-                '${server.host}:${server.port} · '
-                'emparejada ${_formatDate(server.pairedAt)}'
-                '${server.lastSeenAt == null ? '' : ' · vista ${_formatDate(server.lastSeenAt!)}'}',
-              ),
-              trailing: IconButton(
+              IconButton(
                 tooltip: 'Eliminar',
                 onPressed: () => _confirmRemoval(context),
                 icon: const Icon(Icons.delete_outline),
               ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          JScanCodeBlock(
+            value: '${server.host}:${server.port}',
+            maxLines: 1,
+            trailing: JScanStatusPill(
+              label: 'ID $shortId',
+              tone: JScanTone.neutral,
             ),
-            Row(
-              children: <Widget>[
-                FilledButton.tonalIcon(
-                  onPressed:
-                      probing ? null : () => controller.probeServer(server),
-                  icon: probing
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.lock_open, size: 18),
-                  label: Text(probing ? 'Conectando…' : 'Probar conexión'),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'ID ${server.serverId}',
-                  style: theme.textTheme.bodySmall,
-                ),
-              ],
-            ),
-            if (result != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 10),
-                child: ProbeResultView(result: result),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: <Widget>[
+              OutlinedButton.icon(
+                onPressed:
+                    probing ? null : () => controller.probeServer(server),
+                icon: probing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.lock_open, size: 18),
+                label: Text(probing ? 'Conectando…' : 'Probar conexión'),
               ),
+            ],
+          ),
+          if (result != null) ...<Widget>[
+            const SizedBox(height: 10),
+            ProbeResultView(result: result),
           ],
-        ),
+        ],
       ),
     );
   }

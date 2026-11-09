@@ -4,6 +4,11 @@ Pantallas mínimas acordadas. Los wireframes son de baja fidelidad: definen jera
 estados y acciones, no el diseño final. Las pantallas de los sprints 3 a 6 se
 mantienen como referencia.
 
+El diseño final usa el sistema visual oscuro compartido de
+`packages/jscan_ui`: superficies grafito, bordes sutiles, azul de acción
+reservado para lo importante y estados de carga, vacío, error y éxito
+consistentes en Android y Windows.
+
 ## 1. PC · Emparejar dispositivo (Sprint 2)
 
 ```text

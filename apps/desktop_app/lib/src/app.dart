@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:jscan_ui/jscan_ui.dart';
 
 import 'screens/home_screen.dart';
 import 'server_controller.dart';
@@ -17,16 +18,9 @@ class JScanDesktopApp extends ConsumerWidget {
     return MaterialApp(
       title: 'J-SCAN',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorSchemeSeed: const Color(0xFF3F51B5),
-        useMaterial3: true,
-        brightness: Brightness.light,
-      ),
-      darkTheme: ThemeData(
-        colorSchemeSeed: const Color(0xFF3F51B5),
-        useMaterial3: true,
-        brightness: Brightness.dark,
-      ),
+      theme: JScanTheme.dark(),
+      darkTheme: JScanTheme.dark(),
+      themeMode: ThemeMode.dark,
       home: Consumer(
         builder: (context, ref, _) {
           final controller = ref.watch(serverControllerProvider);
