@@ -51,8 +51,10 @@ void main() {
     expect(find.text('Escáner'), findsOneWidget);
     expect(find.text('Escanea un documento'), findsOneWidget);
     expect(find.text('Escanear documento'), findsOneWidget);
+    expect(find.text('Importar de galería'), findsOneWidget);
     expect(find.textContaining('Detección automática'), findsOneWidget);
     expect(find.textContaining('blanco y negro'), findsOneWidget);
+    expect(find.textContaining('envíalo cifrado'), findsOneWidget);
   });
 
   testWidgets('captura páginas y muestra filtros y controles', (tester) async {
@@ -95,5 +97,41 @@ void main() {
     expect(find.widgetWithText(ChoiceChip, 'B/N'), findsOneWidget);
     expect(find.byTooltip('Rotar 90°'), findsNWidgets(2));
     expect(find.byTooltip('Eliminar página'), findsNWidgets(2));
+    expect(find.text('Crear PDF y enviar'), findsOneWidget);
+    expect(find.byTooltip('Importar de galería'), findsOneWidget);
+  });
+
+  testWidgets('abre el diálogo de PDF con nombre y calidad', (tester) async {
+    final temp = await _createTemp(tester);
+    final source = '${temp.path}${Platform.pathSeparator}source.png';
+    final image = img.Image(width: 16, height: 10)
+      ..clear(img.ColorRgb8(240, 240, 240));
+    File(source).writeAsBytesSync(img.encodePng(image));
+
+    final controller = _buildController(temp, sources: <String>[source]);
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(home: ScanScreen(controller: controller)),
+    );
+    await tester.runAsync(() async {
+      await controller.capturePages();
+    });
+    await tester.pump();
+
+    await tester.tap(find.text('Crear PDF y enviar'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Crear PDF'), findsNWidgets(2));
+    expect(find.text('Nombre del archivo'), findsOneWidget);
+    expect(find.text('Calidad'), findsOneWidget);
+    expect(find.text('Alta'), findsOneWidget);
+    expect(find.text('Equilibrada'), findsOneWidget);
+    expect(find.text('Compacta'), findsOneWidget);
+    expect(find.textContaining('1 página en un solo PDF'), findsOneWidget);
+
+    await tester.tap(find.text('Cancelar'));
+    await tester.pumpAndSettle();
+    expect(find.text('Calidad'), findsNothing);
   });
 }

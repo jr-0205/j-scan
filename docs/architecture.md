@@ -132,8 +132,60 @@ Decisiones clave:
   cerrar la pantalla.
 - **`reorder(oldIndex, newIndex)` usa el índice final** que entrega
   `ReorderableListView.onReorderItem`, sin el ajuste de `onReorder` obsoleto.
-- `ScanController` acepta `capture`, `renderer` y `storage` inyectables: los tests
-  cubren captura, filtros, rotación, orden y limpieza sin canales de plataforma.
+- `ScanController` acepta `capture`, `renderer`, `pdfBuilder`, `storage` y
+  `exports` inyectables: los tests cubren captura, filtros, rotación, orden,
+  limpieza y PDF sin canales de plataforma.
+
+## Módulos del Sprint 6
+
+| Módulo | Responsabilidad |
+|---|---|
+| `scanner/scan_pdf.dart` | `ScanPdfPreset`, `ScanPdfPage`, `ScanPdfRequest`/`ScanPdfResult`, nombre seguro y `buildScanPdf`: PDF A4 real con una página por hoja. |
+| `scanner/scan_controller.dart` | `importPages` (galería), `createPdf` (escritura y limpieza) y `busyLabel` para el overlay. |
+| `mobile_app/screens/scan_screen.dart` | Importar de galería, botón **Crear PDF y enviar**, diálogo de nombre/calidad y envío. |
+| `send_file_screen.dart` (`initialPaths`) | Reutiliza la cola, el progreso, la cancelación y la reanudación del Sprint 4 para el PDF. |
+| `file_picker` + `copyToAppCache` | Selección múltiple de imágenes y respaldo para `content://`. |
+
+Decisiones clave:
+
+- **PDF en Dart puro (`pdf` 3.13.1).** No necesita un plugin nativo, funciona
+  igual en Android y en los tests, y permite generar el archivo en un isolate.
+- **Una página A4 por imagen**, sin márgenes, con `BoxFit.contain`. Si la imagen
+  renderizada es horizontal, la página pasa a A4 apaisado para no girar el
+  contenido ni dejar franjas.
+- **Tres presets**: alta (2600 px / JPEG 92), equilibrada (1800/82) y compacta
+  (1200/68). Solo cambian resolución y compresión; el filtro y la rotación siguen
+  partiendo del original, así que un preset no altera el estado de la página.
+- **La exportación vive fuera de la carpeta de páginas**
+  (`jscan_exports/export_<id>/<nombre>.pdf`). Así descartar o cerrar el escáner no
+  borra el PDF mientras la PC lo está recibiendo; las exportaciones de más de un
+  día se eliminan al crear la siguiente.
+- **Reutilizar el envío del Sprint 4** evita duplicar la cola, el cifrado, la
+  reanudación y el progreso. El PDF es un archivo normal para el protocolo.
+- **Galería sin detección de bordes**: las fotos elegidas se copian tal cual y se
+  pueden filtrar, rotar y convertir a PDF como cualquier página capturada.
+
+## Módulos del Sprint 7
+
+| Módulo | Responsabilidad |
+|---|---|
+| `platform/error_messages.dart` | `describeError` traduce excepciones de red, protocolo y disco a mensajes accionables; `isTransientNetworkError` decide qué se puede reintentar. |
+| `discovery_controller.dart` | Usa los mensajes claros en descubrimiento, ping, texto y archivos; reintenta automáticamente una vez los fallos de red. |
+| `docs/guia-rapida.md` | Instalación, flujo completo, permisos, problemas frecuentes y lista de verificación de la beta. |
+
+Decisiones clave:
+
+- **Mensaje primero, detalle después.** La UI muestra una frase con la solución y
+  el detalle técnico entre paréntesis. No se oculta el error, pero deja de ser el
+  único contenido.
+- **Reintento automático acotado**: solo errores de red (`SocketException`,
+  `TimeoutException`, `WebSocketException` o una conexión perdida), una sola vez y
+  tras 1,2 s. Los errores de protocolo, checksum o disco no se reintentan porque
+  necesitan intervención del usuario. `sendFile` reanuda desde el offset que
+  recuerda la PC gracias al SHA-256, así que reintentar no duplica bytes.
+- **La validación final es manual.** Los criterios de 5 celulares, 2 redes y 5
+  personas ajenas al desarrollo no se pueden sustituir con tests; la guía rápida
+  incluye la tabla que debe completar el equipo antes de publicar la beta.
 
 ## Descubrimiento sin plugins
 
@@ -170,6 +222,7 @@ añadir `multicast_lock` en `mobile_app` sin cambiar el protocolo.
 | Textos y portapapeles | `history.sqlite` (SQLite) | memoria de la sesión |
 | Archivos recibidos | carpeta configurable (por defecto `Descargas`) + `.jscan-partial/` | — |
 | Páginas escaneadas | — | carpeta temporal `jscan_scans_<micros>` (se borra al cerrar o descartar) |
+| PDFs exportados | — | `jscan_exports/export_<id>/<nombre>.pdf` (se limpia a los 1 día) |
 | Preferencias | `settings.json` (copia automática y carpeta de archivos) | — |
 
 Los IDs de servidor y dispositivo son estables desde el Sprint 2. En el Sprint 3
@@ -248,3 +301,26 @@ Sprint 5:
   «Original» no deja una copia recompuesta ni degradada.
 - `cunning_document_scanner` procesa la imagen en el dispositivo (ML Kit); no se
   sube ninguna foto a un servicio externo.
+
+Sprint 6:
+
+- El PDF se genera localmente con `pdf` (Dart puro). El contenido son las imágenes
+  ya filtradas; no se ejecuta código de la PC ni se descargan fuentes.
+- El nombre se sanea antes de crear el archivo (sin rutas, caracteres reservados
+  de Windows ni puntos/espacios finales) y se limita a 80 caracteres.
+- El PDF se escribe en una carpeta privada de la app y se envía con el mismo
+  protocolo cifrado del Sprint 4. La PC sigue validando tamaño, SHA-256 y ruta.
+- Las exportaciones se limpian después de un día; el PDF no se borra al cerrar el
+  escáner para no interrumpir un envío en curso.
+- La galería solo lee las imágenes que el usuario elige; los `content://` se
+  copian a la caché privada antes de procesarlos.
+
+Sprint 7:
+
+- Los mensajes de error no incluyen claves ni contenido de archivos; como mucho,
+  el código de protocolo y el mensaje técnico de la excepción.
+- El reintento automático no relaja ninguna comprobación: vuelve a autenticar,
+  recalcula el SHA-256 y la PC decide el offset. Los errores de autorización,
+  checksum o disco no se reintentan.
+- La guía rápida documenta qué permiso usa cada función y qué sigue disponible si
+  el usuario lo deniega; no se piden permisos adicionales para la beta.

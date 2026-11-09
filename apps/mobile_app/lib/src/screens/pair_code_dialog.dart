@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:jscan_core/jscan_core.dart';
 
 import '../discovery_controller.dart';
+import '../platform/error_messages.dart';
 
 /// Diálogo para pegar el código del QR cuando la cámara no está disponible.
 ///
@@ -71,13 +72,16 @@ class _PairCodeDialogState extends State<PairCodeDialog> {
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _error = '${error.code}: ${error.message}';
+        _error = describeError(error);
       });
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _error = 'No se pudo emparejar: $error';
+        _error = describeError(
+          error,
+          fallback: 'No se pudo emparejar el celular con la PC.',
+        );
       });
     }
   }

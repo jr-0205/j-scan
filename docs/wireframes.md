@@ -1,4 +1,4 @@
-# Wireframes (Sprint 2 + Sprint 3 + Sprint 4)
+# Wireframes (Sprint 2 a 6)
 
 Pantallas mínimas acordadas. Los wireframes son de baja fidelidad: definen jerarquía,
 estados y acciones, no el diseño final. Las pantallas de los sprints 3 a 6 se
@@ -262,11 +262,11 @@ esta tarjeta.
 Estados: sin carpeta · sin archivos · recibiendo (hash/envío) · verificado ·
 cancelado · nombre duplicado renombrado. La carpeta se recuerda en `settings.json`.
 
-## 12. Escáner (Sprint 5)
+## 12. Escáner y PDF (Sprint 5 + 6)
 
 ```text
 +--------------------------------------------------+
-|  ←  Escáner                          [🗑 Descartar]|
+|  ←  Escáner                    [🖼]  [🗑 Descartar]|
 +--------------------------------------------------+
 |  Página 2 de 2                      Original · 90° |
 |  (Original) (Color) (Gris) (B/N)                  |
@@ -278,6 +278,7 @@ cancelado · nombre duplicado renombrado. La carpeta se recuerda en `settings.js
 |      Original · 90°                               |
 |                                                   |
 |  [ + Añadir páginas ]   [ 🔍 Vista previa ]       |
+|  [ 📄 Crear PDF y enviar                        ] |
 +--------------------------------------------------+
 ```
 
@@ -285,11 +286,39 @@ La cámara nativa hace la detección de bordes, el recorte manual y la correcci�
 perspectiva antes de devolver cada página. La app muestra hasta 12 páginas por sesión;
 cada una se puede rotar, reordenar (arrastrando desde ⠿) o eliminar. Al elegir una
 página, la barra superior de filtros cambia solo esa página. **Vista previa** abre
-las páginas a pantalla completa con zoom y deslizamiento.
+las páginas a pantalla completa con zoom y deslizamiento. El icono 🖼 importa
+imágenes de la galería y las añade como páginas.
 
-Estado vacío: tarjeta «Escanea un documento» con la explicación de bordes, filtros y
-orden, y el botón **Escanear documento**.
+Estado vacío: tarjeta «Escanea un documento» con la explicación de bordes, filtros,
+orden y PDF, y los botones **Escanear documento** e **Importar de galería**.
 
 Estados: sin páginas · capturando (cámara nativa) · procesando (filtro/rotación con
-overlay) · revisando páginas · vista previa · confirmación de descarte.
-El envío a la PC y el PDF corresponden al Sprint 6.
+overlay) · revisando páginas · vista previa · confirmación de descarte · generando
+PDF · PDF listo para enviar.
+
+## 13. Celular · Diálogo de PDF (Sprint 6)
+
+```text
++------------------------------------------+
+|  Crear PDF                               |
+|                                          |
+|  2 páginas en un solo PDF.               |
+|                                          |
+|  Nombre del archivo           .pdf       |
+|  [ Escaneo 2026-11-08 14.30          ]   |
+|                                          |
+|  Calidad                                 |
+|  ( ) Alta                                |
+|      Máxima nitidez para archivar...     |
+|  (•) Equilibrada                         |
+|      Buena calidad y tamaño razonable    |
+|  ( ) Compacta                            |
+|      Más liviana para correo...          |
+|                                          |
+|           [ Cancelar ]  [ Crear PDF ]    |
++------------------------------------------+
+```
+
+Al terminar, un segundo diálogo resume «2 páginas · 1,4 MB» y ofrece **Enviar a la
+PC**. Si no hay una PC emparejada, explica que puede emparejarla desde el inicio y
+volver a escanear; el PDF queda disponible en la carpeta de exportaciones.

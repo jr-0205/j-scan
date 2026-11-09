@@ -107,6 +107,7 @@ final class ServerController extends ChangeNotifier {
         history: _openHistory(support),
         downloadDirectory: Directory(directory),
         onPairingRequest: _confirmPairing,
+        appVersion: '0.2.0',
       );
       _server = server;
       _events = server.events.listen(_onEvent);

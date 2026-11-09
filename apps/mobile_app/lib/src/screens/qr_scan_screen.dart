@@ -5,6 +5,7 @@ import 'package:jscan_core/jscan_core.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../discovery_controller.dart';
+import '../platform/error_messages.dart';
 import 'pair_code_dialog.dart';
 
 /// Pantalla de cámara que escanea el QR de emparejamiento de la PC.
@@ -79,13 +80,16 @@ class _QrScanScreenState extends State<QrScanScreen> {
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _error = '${error.code}: ${error.message}';
+        _error = describeError(error);
       });
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _error = 'No se pudo emparejar: $error';
+        _error = describeError(
+          error,
+          fallback: 'No se pudo emparejar el celular con la PC.',
+        );
       });
     }
   }

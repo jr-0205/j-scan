@@ -1,4 +1,7 @@
-# Cómo ejecutar J-SCAN (Sprint 0 + 1 + 2 + 3 + 4 + 5)
+# Cómo ejecutar J-SCAN (Sprint 0 a 7)
+
+> Para instalar la beta y probarla sin entrar en detalles técnicos, usa la
+> [guía rápida](guia-rapida.md). Esta página explica el desarrollo y las pruebas.
 
 ## Requisitos
 
@@ -69,7 +72,7 @@ powershell -ExecutionPolicy Bypass -File apps/desktop_app/tool/build_installer.p
 El resultado queda en:
 
 ```text
-apps/desktop_app/build/installer/JScan-Setup-0.1.0.exe
+apps/desktop_app/build/installer/JScan-Setup-0.2.0.exe
 ```
 
 El script lee la versión de `pubspec.yaml`, compila la app, genera el instalador y
@@ -192,8 +195,48 @@ No hace falta emparejar una PC: el escáner funciona solo en el celular.
    confirmarlo. Al salir de la pantalla también se borran los archivos temporales.
 
 El filtro y la rotación se aplican siempre desde la foto original, así que puedes
-cambiar de filtro sin perder calidad. El envío a la PC y la exportación a PDF llegan
-en el Sprint 6.
+cambiar de filtro sin perder calidad.
+
+## Crear el PDF y enviarlo a la PC (Sprint 6)
+
+1. Con una o varias páginas revisadas, pulsa **Crear PDF y enviar**.
+2. Escribe el nombre del archivo. Se limpian los caracteres que Android o Windows
+   no permiten (`<>:"/\|?*`).
+3. Elige la calidad:
+   - **Alta**: 2600 px y JPEG 92, para imprimir o archivar.
+   - **Equilibrada**: 1800 px y JPEG 82 (recomendada).
+   - **Compacta**: 1200 px y JPEG 68, para correo o mensajería.
+4. Pulsa **Crear PDF**. El PDF se genera en un isolate con una página A4 por hoja;
+   las páginas horizontales usan A4 apaisado.
+5. Cuando esté listo, pulsa **Enviar a la PC**. Se abre la pantalla de envío con el
+   PDF ya seleccionado, el progreso, la cancelación y la reanudación del Sprint 4.
+6. La PC lo muestra en **Archivos recibidos** y lo guarda con el nombre elegido.
+
+El PDF se escribe en `jscan_exports/export_<id>/` (fuera de la carpeta de páginas)
+para que siga disponible mientras se envía; las exportaciones de más de un día se
+borran al crear el siguiente PDF.
+
+También puedes añadir fotos existentes con **Importar de galería** (barra superior
+o pantalla vacía). La galería no aplica detección de bordes: las imágenes se copian
+tal cual y luego se les puede aplicar filtro, rotación y PDF.
+
+> **OCR:** el PDF del Sprint 6 contiene imágenes JPEG, no texto seleccionable. El
+> OCR con ML Kit queda como mejora opcional: añade una dependencia nativa de varios
+> MB y debe probarse en los 5 modelos de la beta antes de incluirlo. El protocolo
+> no cambia porque el PDF se envía como un archivo normal.
+
+### Probar el flujo completo sin celular
+
+Las pruebas automáticas cubren la generación real del PDF, la orientación, el
+nombre seguro y el controlador:
+
+```bash
+cd apps/mobile_app
+flutter test test/scan_pdf_test.dart test/scan_controller_test.dart
+```
+
+El criterio de «menos de 30 segundos» y la captura física solo se validan con un
+celular real; usa la lista de verificación de [guia-rapida.md](guia-rapida.md).
 
 ## Verificar desde la terminal
 
@@ -259,10 +302,13 @@ real sobre `winsqlite3.dll`. `packages/jscan_core/test/file_transfer_test.dart` 
 el envío completo, la reanudación desde `.part`, el SHA-256 incorrecto, la
 cancelación y el rechazo sin emparejar. En el celular,
 `apps/mobile_app/test/scan_pipeline_test.dart` verifica los filtros, la rotación y la
-escala; `scan_controller_test.dart` cubre la captura, el orden, los archivos
-temporales y la limpieza; `scan_screen_test.dart` comprueba la pantalla del escáner.
-Los tests de widgets que usan archivos reales envuelven la E/S en
-`tester.runAsync`, porque el reloj de `testWidgets` es falso.
+escala; `scan_controller_test.dart` cubre la captura, la galería, el orden, los
+archivos temporales, la creación real del PDF en un isolate y la limpieza;
+`scan_pdf_test.dart` comprueba el nombre seguro, el número de páginas y la
+orientación A4; `error_messages_test.dart` valida los mensajes claros y qué errores
+se reintentan; `scan_screen_test.dart` comprueba la pantalla del escáner y el
+diálogo de nombre/calidad. Los tests de widgets que usan archivos reales envuelven
+la E/S en `tester.runAsync`, porque el reloj de `testWidgets` es falso.
 
 ## Problemas frecuentes
 
@@ -284,6 +330,11 @@ Los tests de widgets que usan archivos reales envuelven la E/S en
 | «Compartir» no muestra J-SCAN | Android aún no registró el intent | Reinstalar/actualizar el APK y reiniciar el celular |
 | El escáner no abre la cámara | Permiso de cámara denegado | Activarlo en Ajustes → Apps → J-SCAN → Permisos → Cámara |
 | «No se pudo aplicar el filtro» | Poca memoria al procesar una foto muy grande | Cerrar otras apps y reintentar; el escáner limita el lado mayor a 2600 px |
+| «No se pudo crear el PDF» | Falta de espacio o memoria al generar muchas páginas | Usar el preset **Compacta**, cerrar otras apps y comprobar el espacio libre |
+| «No se pudo importar ninguna imagen» | El selector devolvió un `content://` que no se pudo copiar | Volver a elegir la imagen o probar con otra app de galería |
+| El envío falla y no se reintenta solo | El error no es de red (permiso, protocolo o disco) | Leer el mensaje: si es `not_paired` o de checksum, hay que intervenir; los cortes de red se reintentan una vez |
+| «No se pudo leer o escribir el archivo» | El archivo temporal se borró o falta espacio | Volver a escanear o elegir otro destino en la PC |
+| El APK no se instala | Android bloquea apps desconocidas o hay una versión anterior con otra firma | Permitir la instalación para esa app y desinstalar la versión anterior si la firma cambió |
 | `ISCC.exe` no encontrado al generar el instalador | Inno Setup no está instalado | `winget install JRSoftware.InnoSetup` |
 | Windows muestra «aplicación desconocida» al abrir el instalador | El `.exe` no está firmado | Es esperado sin certificado de code signing; usar «Más información → Ejecutar de todas formas» |
 
@@ -297,8 +348,13 @@ Los tests de widgets que usan archivos reales envuelven la E/S en
   `tool/build_installer.ps1`.
 - `apps/mobile_app`: descubrimiento, emparejamiento, lista de PCs, ping cifrado,
   envío de texto/portapapeles y de archivos, recepción de «Compartir», servicio en
-  primer plano y escáner con filtros y varias páginas.
+  primer plano, escáner con filtros y varias páginas, importación de galería, PDF
+  A4 con nombre y calidad, mensajes de error accionables y reintento automático de
+  transferencias ante cortes de red.
 - `docs/protocol.md`: contrato del protocolo v1 y criterios de los sprints 2, 3 y 4
-  (el Sprint 5 no cambia el protocolo: el escáner es local).
+  (los sprints 5, 6 y 7 no cambian el protocolo: el escáner y el PDF son locales y
+  el PDF se envía como un archivo normal).
+- `docs/guia-rapida.md`: instalación, flujo completo, permisos, solución de
+  problemas y lista de verificación de la beta.
 - `docs/architecture.md`: decisiones técnicas.
 - `docs/wireframes.md`: pantallas de los sprints 2 a 6.

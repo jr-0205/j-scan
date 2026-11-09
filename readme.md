@@ -103,7 +103,9 @@ Si quieres, puedo pasar todo esto a un documento editable, o detallar las tareas
 
 # Estado del repositorio
 
-Sprint 0, Sprint 1, Sprint 2, Sprint 3, Sprint 4 y Sprint 5 implementados:
+Sprint 0 a Sprint 7 implementados. Los sprints 0–6 están cerrados en código y
+pruebas; el Sprint 7 incluye el pulido de errores, el reintento automático, la guía
+rápida y la lista de validación manual de la beta:
 
 - monorepo con Melos (`packages/jscan_core`, `apps/desktop_app`, `apps/mobile_app`);
 - protocolo v1 documentado en [docs/protocol.md](docs/protocol.md), incluidos el
@@ -128,19 +130,34 @@ Sprint 0, Sprint 1, Sprint 2, Sprint 3, Sprint 4 y Sprint 5 implementados:
   recorte manual nativo, rotación, reordenación y eliminación; filtros original, color
   mejorado, escala de grises y blanco y negro aplicados desde el original, renderizado
   en un isolate y páginas temporales que se borran al descartar o cerrar la pantalla;
+- **Sprint 6**: PDF A4 de varias páginas con nombre editable y presets de calidad
+  (alta, equilibrada y compacta), generado con `pdf` en un isolate; importación de
+  imágenes de la galería; botón **Crear PDF y enviar** que reutiliza la transferencia
+  cifrada del Sprint 4 con progreso, cancelación y reanudación; exportaciones
+  temporales que se limpian a los 1 día;
+- **Sprint 7**: mensajes de error accionables en español (`describeError`), reintento
+  automático único ante cortes de red, guía rápida con permisos explicados y lista de
+  verificación de la beta; versión `0.2.0+2` en ambas apps;
 - instalador de Windows con Inno Setup (por usuario, sin administrador) generado por
   `apps/desktop_app/tool/build_installer.ps1`;
 - CI en GitHub Actions y pruebas automáticas (incluidas la prueba mDNS E2E con
   emparejamiento y ping cifrado, el envío cifrado de texto, el historial SQLite y la
   transferencia de archivos con reanudación y hash).
 
-> **Instalador de Windows:** `apps/desktop_app/build/installer/JScan-Setup-0.1.0.exe`
+> **Instalador de Windows:** `apps/desktop_app/build/installer/JScan-Setup-0.2.0.exe`
 > (Inno Setup, instalación por usuario sin administrador). Se regenera con
 > `powershell -ExecutionPolicy Bypass -File apps/desktop_app/tool/build_installer.ps1`.
 > El build portable sigue disponible en
 > `apps/desktop_app/build/windows/x64/runner/Release/`.
+>
+> **APK de prueba:** `apps/mobile_app/build/app/outputs/flutter-apk/app-debug.apk`.
 
 Guía de ejecución: [docs/getting-started.md](docs/getting-started.md).
+Guía rápida para la beta: [docs/guia-rapida.md](docs/guia-rapida.md).
+
+> **Pendiente de validación manual (Sprint 7):** los criterios de 5 modelos de
+> celular, 2 redes y 5 personas ajenas al desarrollo requieren dispositivos y
+> personas reales. La guía rápida incluye la tabla para completarlos.
 
 
  opencode -s ses_e6ca0e5e8ffeEncD11sHKrx3Zs

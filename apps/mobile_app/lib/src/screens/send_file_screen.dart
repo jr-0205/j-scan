@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:jscan_core/jscan_core.dart';
 
 import '../discovery_controller.dart';
+import '../platform/error_messages.dart';
 import '../platform/share_intent.dart';
 
 /// Pantalla del Sprint 4 para enviar archivos, fotos y videos a la PC.
@@ -95,7 +96,12 @@ class _SendFileScreenState extends State<SendFileScreen> {
       }
       await widget.controller.sendFilesTo(server, paths);
     } catch (error) {
-      _toast('No se pudieron elegir archivos: $error');
+      _toast(
+        describeError(
+          error,
+          fallback: 'No se pudieron elegir los archivos.',
+        ),
+      );
     } finally {
       if (mounted) setState(() => _picking = false);
     }

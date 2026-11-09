@@ -1,21 +1,37 @@
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../discovery_controller.dart';
+import '../platform/error_messages.dart';
+import '../platform/share_intent.dart';
 import '../scanner/scan_controller.dart';
+import '../scanner/scan_pdf.dart';
 import '../scanner/scan_pipeline.dart';
+import 'send_file_screen.dart';
 
-/// Pantalla del Sprint 5: captura de documentos, páginas, filtros y orden.
+/// Pantalla del escáner: captura, páginas, filtros, orden y PDF.
 class ScanScreen extends StatefulWidget {
-  const ScanScreen({super.key, this.controller});
+  const ScanScreen({super.key, this.controller, this.discovery});
 
   /// Se inyecta en los tests; en producción la pantalla crea el suyo.
   final ScanController? controller;
 
-  static Future<void> open(BuildContext context, {ScanController? controller}) {
+  /// Necesario para enviar el PDF a la PC.
+  final DiscoveryController? discovery;
+
+  static Future<void> open(
+    BuildContext context, {
+    ScanController? controller,
+    DiscoveryController? discovery,
+  }) {
     return Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (_) => ScanScreen(controller: controller),
+        builder: (_) => ScanScreen(
+          controller: controller,
+          discovery: discovery,
+        ),
       ),
     );
   }
@@ -81,6 +97,102 @@ class _ScanScreenState extends State<ScanScreen> {
     setState(() => _selectedId = _controller.pages.last.id);
   }
 
+  void _toast(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  Future<void> _importFromGallery() async {
+    if (_controller.busy) return;
+    try {
+      final files = await FilePicker.pickFiles(type: FileType.image);
+      if (!mounted) return;
+      final paths = <String>[];
+      for (final file in files) {
+        var path = file.path;
+        if (path == null && file.uri.scheme != 'file') {
+          path = await copyToAppCache(file.uri.toString());
+        }
+        if (path != null && path.isNotEmpty) paths.add(path);
+      }
+      if (paths.isEmpty) {
+        _toast('No se seleccionó ninguna imagen');
+        return;
+      }
+      await _controller.importPages(paths);
+      if (!mounted || _controller.pages.isEmpty) return;
+      setState(() => _selectedId = _controller.pages.last.id);
+    } catch (error) {
+      _toast(
+        describeError(error, fallback: 'No se pudo abrir la galería.'),
+      );
+    }
+  }
+
+  Future<void> _exportPdf() async {
+    if (_controller.busy || _controller.pages.isEmpty) return;
+    final options = await showDialog<_PdfOptions>(
+      context: context,
+      builder: (context) => _PdfOptionsDialog(
+        initialName: _defaultPdfName(),
+        pageCount: _controller.pageCount,
+      ),
+    );
+    if (options == null || !mounted) return;
+
+    final file = await _controller.createPdf(
+      name: options.name,
+      preset: options.preset,
+    );
+    if (!mounted || file == null) return;
+
+    final discovery = widget.discovery;
+    if (discovery == null) {
+      _toast('PDF creado: ${file.path}');
+      return;
+    }
+
+    final length = await file.length();
+    if (!mounted) return;
+    final hasServers = discovery.pairedServers.isNotEmpty;
+    final send = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('PDF listo'),
+        content: Text(
+          hasServers
+              ? '${_controller.pageCount} página'
+                  '${_controller.pageCount == 1 ? '' : 's'} · '
+                  '${formatFileSize(length)}.\n'
+                  '¿Quieres enviarlo a la PC?'
+              : 'El PDF está listo (${formatFileSize(length)}), pero todavía '
+                  'no hay una PC emparejada. Puedes emparejarla desde el '
+                  'inicio y volver a escanear.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cerrar'),
+          ),
+          if (hasServers)
+            FilledButton.icon(
+              onPressed: () => Navigator.of(context).pop(true),
+              icon: const Icon(Icons.send),
+              label: const Text('Enviar a la PC'),
+            ),
+        ],
+      ),
+    );
+    if (send != true || !mounted) return;
+    await SendFileScreen.open(
+      context,
+      controller: discovery,
+      initialPaths: <String>[file.path],
+    );
+  }
+
   Future<void> _confirmClear() async {
     final pages = _controller.pageCount;
     if (pages == 0) return;
@@ -135,6 +247,11 @@ class _ScanScreenState extends State<ScanScreen> {
           appBar: AppBar(
             title: const Text('Escáner'),
             actions: <Widget>[
+              IconButton(
+                tooltip: 'Importar de galería',
+                onPressed: busy ? null : _importFromGallery,
+                icon: const Icon(Icons.photo_library_outlined),
+              ),
               if (pages.isNotEmpty)
                 IconButton(
                   tooltip: 'Descartar escaneo',
@@ -163,6 +280,7 @@ class _ScanScreenState extends State<ScanScreen> {
                           ? _EmptyScanner(
                               busy: busy,
                               onScan: _scan,
+                              onImport: _importFromGallery,
                             )
                           : ReorderableListView.builder(
                               padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
@@ -190,21 +308,38 @@ class _ScanScreenState extends State<ScanScreen> {
                         top: false,
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-                          child: Row(
+                          child: Column(
                             children: <Widget>[
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  onPressed: busy ? null : _scan,
-                                  icon: const Icon(Icons.add_a_photo_outlined),
-                                  label: const Text('Añadir páginas'),
-                                ),
+                              Row(
+                                children: <Widget>[
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      onPressed: busy ? null : _scan,
+                                      icon: const Icon(
+                                        Icons.add_a_photo_outlined,
+                                      ),
+                                      label: const Text('Añadir páginas'),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      onPressed: busy ? null : _preview,
+                                      icon: const Icon(Icons.zoom_in),
+                                      label: const Text('Vista previa'),
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
+                              const SizedBox(height: 8),
+                              SizedBox(
+                                width: double.infinity,
                                 child: FilledButton.icon(
-                                  onPressed: busy ? null : _preview,
-                                  icon: const Icon(Icons.zoom_in),
-                                  label: const Text('Vista previa'),
+                                  onPressed: busy ? null : _exportPdf,
+                                  icon: const Icon(
+                                    Icons.picture_as_pdf_outlined,
+                                  ),
+                                  label: const Text('Crear PDF y enviar'),
                                 ),
                               ),
                             ],
@@ -227,10 +362,12 @@ class _ScanScreenState extends State<ScanScreen> {
                           ),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
-                            children: const <Widget>[
-                              CircularProgressIndicator(),
-                              SizedBox(height: 14),
-                              Text('Procesando página…'),
+                            children: <Widget>[
+                              const CircularProgressIndicator(),
+                              const SizedBox(height: 14),
+                              Text(
+                                _controller.busyLabel ?? 'Procesando página…',
+                              ),
                             ],
                           ),
                         ),
@@ -247,10 +384,15 @@ class _ScanScreenState extends State<ScanScreen> {
 }
 
 class _EmptyScanner extends StatelessWidget {
-  const _EmptyScanner({required this.busy, required this.onScan});
+  const _EmptyScanner({
+    required this.busy,
+    required this.onScan,
+    required this.onImport,
+  });
 
   final bool busy;
   final VoidCallback onScan;
+  final VoidCallback onImport;
 
   @override
   Widget build(BuildContext context) {
@@ -296,11 +438,21 @@ class _EmptyScanner extends StatelessWidget {
                   icon: Icons.reorder,
                   text: 'Rota, reordena o elimina páginas antes de terminar',
                 ),
+                _FeatureRow(
+                  icon: Icons.picture_as_pdf_outlined,
+                  text: 'Crea un PDF y envíalo cifrado a la PC',
+                ),
                 const SizedBox(height: 22),
                 FilledButton.icon(
                   onPressed: busy ? null : onScan,
                   icon: const Icon(Icons.camera_alt_outlined),
                   label: const Text('Escanear documento'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: busy ? null : onImport,
+                  icon: const Icon(Icons.photo_library_outlined),
+                  label: const Text('Importar de galería'),
                 ),
               ],
             ),
@@ -587,6 +739,128 @@ class _PagePreviewDialogState extends State<_PagePreviewDialog> {
           ],
         ),
       ),
+    );
+  }
+}
+
+String _defaultPdfName() {
+  final now = DateTime.now();
+  String two(int value) => value.toString().padLeft(2, '0');
+  return 'Escaneo ${now.year}-${two(now.month)}-${two(now.day)} '
+      '${two(now.hour)}.${two(now.minute)}';
+}
+
+final class _PdfOptions {
+  const _PdfOptions({required this.name, required this.preset});
+
+  final String name;
+  final ScanPdfPreset preset;
+}
+
+class _PdfOptionsDialog extends StatefulWidget {
+  const _PdfOptionsDialog({
+    required this.initialName,
+    required this.pageCount,
+  });
+
+  final String initialName;
+  final int pageCount;
+
+  @override
+  State<_PdfOptionsDialog> createState() => _PdfOptionsDialogState();
+}
+
+class _PdfOptionsDialogState extends State<_PdfOptionsDialog> {
+  late final TextEditingController _name;
+  ScanPdfPreset _preset = ScanPdfPreset.balanced;
+
+  @override
+  void initState() {
+    super.initState();
+    _name = TextEditingController(text: widget.initialName);
+    _name.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  bool get _valid => _name.text.trim().isNotEmpty;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return AlertDialog(
+      title: const Text('Crear PDF'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              '${widget.pageCount} página'
+              '${widget.pageCount == 1 ? '' : 's'} en un solo PDF.',
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _name,
+              textInputAction: TextInputAction.done,
+              decoration: const InputDecoration(
+                labelText: 'Nombre del archivo',
+                border: OutlineInputBorder(),
+                suffixText: '.pdf',
+              ),
+              onSubmitted: (_) {
+                if (_valid) {
+                  Navigator.of(context).pop(
+                    _PdfOptions(name: _name.text, preset: _preset),
+                  );
+                }
+              },
+            ),
+            const SizedBox(height: 16),
+            Text('Calidad', style: theme.textTheme.titleSmall),
+            const SizedBox(height: 4),
+            RadioGroup<ScanPdfPreset>(
+              groupValue: _preset,
+              onChanged: (value) {
+                if (value != null) setState(() => _preset = value);
+              },
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: ScanPdfPreset.values
+                    .map(
+                      (preset) => RadioListTile<ScanPdfPreset>(
+                        value: preset,
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        title: Text(preset.label),
+                        subtitle: Text(preset.description),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _valid
+              ? () => Navigator.of(context).pop(
+                    _PdfOptions(name: _name.text, preset: _preset),
+                  )
+              : null,
+          child: const Text('Crear PDF'),
+        ),
+      ],
     );
   }
 }

@@ -57,7 +57,8 @@ class DiscoverScreen extends StatelessWidget {
             actions: <Widget>[
               IconButton(
                 tooltip: 'Escanear documento',
-                onPressed: () => ScanScreen.open(context),
+                onPressed: () =>
+                    ScanScreen.open(context, discovery: controller),
                 icon: const Icon(Icons.document_scanner_outlined),
               ),
               if (paired.isNotEmpty) ...<Widget>[
@@ -121,7 +122,10 @@ class DiscoverScreen extends StatelessWidget {
                     onPaste: () => _pasteCode(context),
                   ),
                   const SizedBox(height: 12),
-                  _ScanCard(onOpen: () => ScanScreen.open(context)),
+                  _ScanCard(
+                    onOpen: () =>
+                        ScanScreen.open(context, discovery: controller),
+                  ),
                   if (paired.isNotEmpty) ...<Widget>[
                     const SizedBox(height: 12),
                     _SendFilesCard(controller: controller),

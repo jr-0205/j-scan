@@ -1,7 +1,7 @@
 name: mobile_app
 description: "J-SCAN para Android: descubre la PC en la red local y prueba la conexión."
 publish_to: none
-version: 0.1.0+1
+version: 0.2.0+2
 
 environment:
   sdk: ^3.6.0
@@ -17,6 +17,7 @@ dependencies:
   jscan_core:
     path: ../../packages/jscan_core
   mobile_scanner: ^7.4.3
+  pdf: ^3.13.1
 
 dev_dependencies:
   flutter_test:

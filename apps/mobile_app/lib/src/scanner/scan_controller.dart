@@ -5,6 +5,7 @@ import 'dart:isolate';
 import 'package:cunning_document_scanner/cunning_document_scanner.dart';
 import 'package:flutter/foundation.dart';
 
+import 'scan_pdf.dart';
 import 'scan_pipeline.dart';
 
 /// Abre el escáner nativo y devuelve las rutas de las páginas capturadas.
@@ -14,6 +15,9 @@ typedef ScanCapture = Future<List<String>?> Function();
 typedef ScanRenderer = Future<ScanRenderResult> Function(
   ScanRenderRequest request,
 );
+
+/// Genera el PDF en un isolate (o directamente en los tests).
+typedef ScanPdfBuilder = Future<ScanPdfResult> Function(ScanPdfRequest request);
 
 /// Una página escaneada, con su original intacto y una versión renderizada
 /// (recortada por el escáner, rotada y con filtro) que es la que se muestra.
@@ -40,38 +44,53 @@ final class ScannedPage {
   String get filterLabel => filter.label;
 }
 
-/// Estado del escáner del Sprint 5: captura, páginas, filtros y orden.
+/// Estado del escáner: captura, páginas, filtros, orden y PDF.
 ///
 /// Las páginas se guardan en una carpeta temporal propia de la app. El escáner
 /// nativo (ML Kit en Android, VisionKit en iOS) hace la detección de bordes y
-/// la corrección de perspectiva; aquí se añaden los filtros y la revisión.
+/// la corrección de perspectiva; aquí se añaden los filtros, la revisión y la
+/// exportación a PDF.
 final class ScanController extends ChangeNotifier {
   ScanController({
     Directory? storage,
+    Directory? exports,
     ScanCapture? capture,
     ScanRenderer? renderer,
+    ScanPdfBuilder? pdfBuilder,
   })  : _storage = storage ??
             Directory(
               '${Directory.systemTemp.path}${Platform.pathSeparator}'
               'jscan_scans_${DateTime.now().microsecondsSinceEpoch}',
             ),
+        _exports = exports ??
+            Directory(
+              '${Directory.systemTemp.path}${Platform.pathSeparator}'
+              'jscan_exports',
+            ),
         _capture = capture ?? _nativeCapture,
         _renderer = renderer ?? _isolateRenderer,
+        _pdfBuilder = pdfBuilder ?? _isolatePdfBuilder,
         _ownsNativeScanner = capture == null;
 
   final Directory _storage;
+  final Directory _exports;
   final ScanCapture _capture;
   final ScanRenderer _renderer;
+  final ScanPdfBuilder _pdfBuilder;
   final bool _ownsNativeScanner;
 
   final List<ScannedPage> _pages = <ScannedPage>[];
   bool _busy = false;
+  String? _busyLabel;
   String? _error;
   int _counter = 0;
 
   List<ScannedPage> get pages => List<ScannedPage>.unmodifiable(_pages);
 
   bool get busy => _busy;
+
+  /// Texto del overlay de progreso (cámara, filtro, importación o PDF).
+  String? get busyLabel => _busyLabel;
 
   String? get error => _error;
 
@@ -85,31 +104,12 @@ final class ScanController extends ChangeNotifier {
   /// la carpeta propia y luego se limpia su caché.
   Future<void> capturePages() async {
     if (_busy) return;
-    _setBusy(true);
+    _setBusy(true, label: 'Abriendo la cámara…');
     try {
       final paths = await _capture();
       if (paths == null || paths.isEmpty) return;
 
-      await _storage.create(recursive: true);
-      for (final path in paths) {
-        final source = File(path);
-        if (!await source.exists()) continue;
-
-        final id = _newId();
-        final extension = _extensionOf(path);
-        final original = File(
-          '${_storage.path}${Platform.pathSeparator}page_${id}_original$extension',
-        );
-        await source.copy(original.path);
-
-        _pages.add(
-          ScannedPage(
-            id: id,
-            originalPath: original.path,
-            renderedPath: original.path,
-          ),
-        );
-      }
+      await _addSources(paths);
       _error = null;
     } on CunningDocumentScannerException catch (error) {
       _error = error.code == 'permission_denied'
@@ -128,6 +128,75 @@ final class ScanController extends ChangeNotifier {
           // La limpieza es opcional; las copias propias ya están guardadas.
         }
       }
+      _setBusy(false);
+    }
+  }
+
+  /// Añade imágenes elegidas de la galería como páginas nuevas.
+  ///
+  /// La galería no pasa por la detección de bordes del escáner nativo; se
+  /// copian tal cual y luego se les puede aplicar filtro o rotación.
+  Future<void> importPages(List<String> paths) async {
+    if (_busy || paths.isEmpty) return;
+    _setBusy(true, label: 'Importando imágenes…');
+    try {
+      final added = await _addSources(paths);
+      if (added == 0) {
+        _error = 'No se pudo leer ninguna imagen de la galería.';
+      } else {
+        _error = null;
+      }
+    } catch (error) {
+      _error = 'No se pudieron importar las imágenes: $error';
+    } finally {
+      _setBusy(false);
+    }
+  }
+
+  /// Genera un PDF con las páginas actuales y devuelve el archivo temporal.
+  ///
+  /// El PDF se escribe fuera de la carpeta de páginas para que siga disponible
+  /// mientras la PC lo recibe. Devuelve `null` si ya hay una tarea en curso o
+  /// si la generación falla; en ese caso [error] explica el motivo.
+  Future<File?> createPdf({
+    required String name,
+    ScanPdfPreset preset = ScanPdfPreset.balanced,
+  }) async {
+    if (_busy || _pages.isEmpty) return null;
+    final safeName = sanitizePdfFileName(name);
+    _setBusy(true, label: 'Generando PDF…');
+    try {
+      final result = await _pdfBuilder(
+        ScanPdfRequest(
+          pages: <ScanPdfPage>[
+            for (final page in _pages)
+              ScanPdfPage(
+                sourcePath: page.originalPath,
+                filter: page.filter,
+                quarterTurns: page.quarterTurns,
+              ),
+          ],
+          title: safeName,
+          preset: preset,
+        ),
+      );
+
+      await _exports.create(recursive: true);
+      final folder = Directory(
+        '${_exports.path}${Platform.pathSeparator}export_${_newId()}',
+      );
+      await folder.create(recursive: true);
+      final file = File(
+        '${folder.path}${Platform.pathSeparator}$safeName.pdf',
+      );
+      await file.writeAsBytes(result.bytes, flush: true);
+      _error = null;
+      unawaited(_cleanOldExports());
+      return file;
+    } catch (error) {
+      _error = 'No se pudo crear el PDF: $error';
+      return null;
+    } finally {
       _setBusy(false);
     }
   }
@@ -246,9 +315,58 @@ final class ScanController extends ChangeNotifier {
     }
   }
 
-  void _setBusy(bool value) {
+  void _setBusy(bool value, {String? label}) {
     _busy = value;
+    _busyLabel = value ? label : null;
     notifyListeners();
+  }
+
+  /// Copia [paths] a la carpeta propia y devuelve cuántas páginas añadió.
+  Future<int> _addSources(Iterable<String> paths) async {
+    await _storage.create(recursive: true);
+    var added = 0;
+    for (final path in paths) {
+      final source = File(path);
+      if (!await source.exists()) continue;
+
+      final id = _newId();
+      final extension = _extensionOf(path);
+      final original = File(
+        '${_storage.path}${Platform.pathSeparator}page_${id}_original$extension',
+      );
+      await source.copy(original.path);
+
+      _pages.add(
+        ScannedPage(
+          id: id,
+          originalPath: original.path,
+          renderedPath: original.path,
+        ),
+      );
+      added += 1;
+    }
+    notifyListeners();
+    return added;
+  }
+
+  /// Borra exportaciones de más de un día para no acumular PDFs en la caché.
+  Future<void> _cleanOldExports() async {
+    try {
+      if (!await _exports.exists()) return;
+      final cutoff = DateTime.now().subtract(const Duration(days: 1));
+      await for (final entity in _exports.list()) {
+        try {
+          final stat = await entity.stat();
+          if (stat.modified.isBefore(cutoff)) {
+            await entity.delete(recursive: true);
+          }
+        } catch (_) {
+          // Otro envío puede estar leyendo el archivo; se reintenta luego.
+        }
+      }
+    } catch (_) {
+      // La caché del sistema también puede limpiarla.
+    }
   }
 
   String _newId() => '${DateTime.now().microsecondsSinceEpoch}_${_counter++}';
@@ -288,6 +406,10 @@ final class ScanController extends ChangeNotifier {
     ScanRenderRequest request,
   ) {
     return Isolate.run(() => renderScanPage(request));
+  }
+
+  static Future<ScanPdfResult> _isolatePdfBuilder(ScanPdfRequest request) {
+    return Isolate.run(() => buildScanPdf(request));
   }
 
   @override

@@ -48,7 +48,7 @@ TTL: 4500 s para PTR/SRV/TXT y 120 s para A.
   "id": "3f9a1c2b",
   "name": "DESKTOP-ABC",
   "platform": "windows",
-  "appVersion": "0.1.0",
+  "appVersion": "0.2.0",
   "protocolVersion": 1,
   "wsPath": "/ws",
   "time": "2026-10-31T12:00:00.000Z",
@@ -160,7 +160,7 @@ Celular                                         PC
     "id": "a1b2c3d4",
     "name": "Pixel 8",
     "platform": "android",
-    "appVersion": "0.1.0"
+    "appVersion": "0.2.0"
   },
   "publicKey": "<base64url de 32 bytes>"
 }
@@ -211,7 +211,7 @@ vence la confirmación, `pairing_rejected`.
     "id": "3f9a1c2b",
     "name": "DESKTOP-ABC",
     "platform": "windows",
-    "appVersion": "0.1.0"
+    "appVersion": "0.2.0"
   },
   "proof": "<HMAC-SHA256 base64url>",
   "pairedAt": 1793544030000
@@ -287,7 +287,7 @@ correcta deriva la clave de sesión y responde `auth_ok` ya cifrado.
     "id": "3f9a1c2b",
     "name": "DESKTOP-ABC",
     "platform": "windows",
-    "appVersion": "0.1.0"
+    "appVersion": "0.2.0"
   },
   "protocolVersion": 1,
   "wsPath": "/ws"
@@ -631,3 +631,19 @@ Con la PC y el celular emparejados en la misma red y sin internet:
    pide elegir la PC si hay varias emparejadas).
 8. Los envíos largos siguen activos con la pantalla apagada o la app en segundo
    plano gracias al servicio en primer plano.
+
+## 16. Sprints 5, 6 y 7
+
+Estos sprints **no cambian el protocolo v1**:
+
+- El escáner, la importación de galería y la generación del PDF son locales en el
+  celular. No se añade ningún mensaje nuevo.
+- El PDF se envía con `file_offer`/`file_chunk`/`file_complete` como cualquier otro
+  archivo; la PC lo verifica con SHA-256 y lo guarda con su nombre.
+- El reintento automático del Sprint 7 reutiliza la misma autenticación, el mismo
+  `transferId` (SHA-256) y la reanudación por `offset`. No relaja ninguna regla de
+  compatibilidad ni de seguridad.
+
+Criterio de aceptación del Sprint 6 (del celular a la PC, de la hoja física al PDF
+recibido en menos de 30 segundos) y del Sprint 7 (5 celulares, 2 redes y 5 personas
+ajenas al desarrollo) se validan con la lista de [guia-rapida.md](guia-rapida.md).

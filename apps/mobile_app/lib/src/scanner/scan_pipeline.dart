@@ -25,7 +25,8 @@ final class ScanRenderRequest {
     required this.filter,
     required this.quarterTurns,
     this.maxDimension = 2600,
-  });
+    this.jpegQuality = 92,
+  }) : assert(jpegQuality >= 1 && jpegQuality <= 100);
 
   final String sourcePath;
   final ScanFilter filter;
@@ -36,6 +37,9 @@ final class ScanRenderRequest {
   /// Lado mayor máximo, para que un documento de 12 MP no consuma memoria de
   /// más. 2600 px equivale a ~220 ppp en una hoja A4.
   final int maxDimension;
+
+  /// Calidad del JPEG de salida (1–100). Los PDFs compactos usan menos.
+  final int jpegQuality;
 }
 
 /// Resultado del renderizado, listo para guardarse como JPEG.
@@ -101,7 +105,7 @@ ScanRenderResult renderScanPage(ScanRenderRequest request) {
       break;
   }
 
-  final output = img.encodeJpg(image, quality: 92);
+  final output = img.encodeJpg(image, quality: request.jpegQuality);
   return ScanRenderResult(
     bytes: output,
     width: image.width,

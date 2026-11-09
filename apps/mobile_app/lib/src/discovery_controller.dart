@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:jscan_core/jscan_core.dart';
 
+import 'platform/error_messages.dart';
 import 'platform/foreground_service.dart';
 import 'storage/mobile_store.dart';
 
@@ -190,6 +191,10 @@ final class DiscoveryController extends ChangeNotifier {
   bool _processingFile = false;
   int _taskCounter = 0;
 
+  /// Reintentos automáticos de una transferencia ante un corte de red.
+  static const int _maxAutoRetries = 1;
+  static const Duration _autoRetryDelay = Duration(milliseconds: 1200);
+
   bool _ready = false;
 
   int get activeFileTransfers =>
@@ -255,7 +260,10 @@ final class DiscoveryController extends ChangeNotifier {
       completer.complete();
     } catch (error) {
       status = ScanStatus.error;
-      errorMessage = 'No se pudo cargar la identidad: $error';
+      errorMessage = describeError(
+        error,
+        fallback: 'No se pudo cargar la identidad del celular.',
+      );
       completer.complete();
       notifyListeners();
     } finally {
@@ -284,7 +292,10 @@ final class DiscoveryController extends ChangeNotifier {
       await scan();
     } catch (error) {
       status = ScanStatus.error;
-      errorMessage = 'No se pudo iniciar el descubrimiento: $error';
+      errorMessage = describeError(
+        error,
+        fallback: 'No se pudo iniciar el descubrimiento de PCs.',
+      );
       notifyListeners();
     }
   }
@@ -308,7 +319,10 @@ final class DiscoveryController extends ChangeNotifier {
       status = ScanStatus.ready;
     } catch (error) {
       status = ScanStatus.error;
-      errorMessage = 'Error al buscar PCs: $error';
+      errorMessage = describeError(
+        error,
+        fallback: 'No se pudieron buscar PCs en la red.',
+      );
     }
     notifyListeners();
   }
@@ -436,9 +450,9 @@ final class DiscoveryController extends ChangeNotifier {
         serverName: client.serverInfo?.name ?? server.name,
       );
     } on ProtocolException catch (error) {
-      return PeerProbeResult(error: '${error.code}: ${error.message}');
+      return PeerProbeResult(error: describeError(error));
     } catch (error) {
-      return PeerProbeResult(error: '$error');
+      return PeerProbeResult(error: describeError(error));
     } finally {
       await client?.close();
     }
@@ -478,44 +492,52 @@ final class DiscoveryController extends ChangeNotifier {
       );
     }
 
-    JScanClient? client;
-    try {
-      client = await JScanClient.connectPaired(
-        server: server,
-        identity: identity,
-        device: _deviceInfo(identity),
-      );
-      final delivery = fromClipboard
-          ? await client.sendClipboard(text)
-          : await client.sendText(text);
-      stopwatch.stop();
+    var attempts = 0;
+    while (true) {
+      attempts += 1;
+      JScanClient? client;
+      try {
+        client = await JScanClient.connectPaired(
+          server: server,
+          identity: identity,
+          device: _deviceInfo(identity),
+        );
+        final delivery = fromClipboard
+            ? await client.sendClipboard(text)
+            : await client.sendText(text);
+        stopwatch.stop();
 
-      final result = SendResult(
-        ok: true,
-        delivery: delivery,
-        serverName: client.serverInfo?.name ?? serverName,
-        elapsed: stopwatch.elapsed,
-      );
-      _recordSent(text, kind, result);
-      return result;
-    } on ProtocolException catch (error) {
-      return _recordFailure(
-        text: text,
-        kind: kind,
-        serverName: serverName,
-        error: '${error.code}: ${error.message}',
-        stopwatch: stopwatch,
-      );
-    } catch (error) {
-      return _recordFailure(
-        text: text,
-        kind: kind,
-        serverName: serverName,
-        error: '$error',
-        stopwatch: stopwatch,
-      );
-    } finally {
-      await client?.close();
+        final result = SendResult(
+          ok: true,
+          delivery: delivery,
+          serverName: client.serverInfo?.name ?? serverName,
+          elapsed: stopwatch.elapsed,
+        );
+        _recordSent(text, kind, result);
+        return result;
+      } on ProtocolException catch (error) {
+        return _recordFailure(
+          text: text,
+          kind: kind,
+          serverName: serverName,
+          error: describeError(error),
+          stopwatch: stopwatch,
+        );
+      } catch (error) {
+        if (attempts <= _maxAutoRetries && isTransientNetworkError(error)) {
+          await Future<void>.delayed(_autoRetryDelay);
+          continue;
+        }
+        return _recordFailure(
+          text: text,
+          kind: kind,
+          serverName: serverName,
+          error: describeError(error),
+          stopwatch: stopwatch,
+        );
+      } finally {
+        await client?.close();
+      }
     }
   }
 
@@ -659,63 +681,93 @@ final class DiscoveryController extends ChangeNotifier {
       return;
     }
 
-    task.status = FileTaskStatus.hashing;
-    notifyListeners();
-    unawaited(_foreground.start(title: 'Preparando ${task.name}'));
-    _updateForeground(task);
+    var attempts = 0;
+    while (true) {
+      attempts += 1;
+      task
+        ..status = FileTaskStatus.hashing
+        ..sentBytes = 0
+        ..totalBytes = task.size
+        ..error = null;
+      notifyListeners();
+      unawaited(_foreground.start(title: 'Preparando ${task.name}'));
+      _updateForeground(task);
 
-    JScanClient? client;
-    try {
-      client = await JScanClient.connectPaired(
-        server: target,
-        identity: identity,
-        device: _deviceInfo(identity),
-      );
-      final delivery = await client.sendFile(
-        File(task.path),
-        name: task.name,
-        shouldCancel: () => task.cancelRequested,
-        onProgress: (progress) {
-          task
-            ..sentBytes = progress.sentBytes
-            ..totalBytes = progress.totalBytes
-            ..status = switch (progress.phase) {
-              FileTransferPhase.hashing => FileTaskStatus.hashing,
-              FileTransferPhase.uploading => FileTaskStatus.sending,
-              FileTransferPhase.completed => FileTaskStatus.completed,
-            };
-          _updateForeground(task);
-          notifyListeners();
-        },
-      );
-      task
-        ..status = FileTaskStatus.completed
-        ..sentBytes = task.totalBytes
-        ..sha256 = delivery.sha256
-        ..finishedAt = DateTime.now();
-    } on FileTransferCanceledException {
-      task
-        ..status = FileTaskStatus.canceled
-        ..finishedAt = DateTime.now();
-    } on ProtocolException catch (error) {
-      if (error.code == ProtocolErrorCode.cancelled) {
+      JScanClient? client;
+      try {
+        client = await JScanClient.connectPaired(
+          server: target,
+          identity: identity,
+          device: _deviceInfo(identity),
+        );
+        final delivery = await client.sendFile(
+          File(task.path),
+          name: task.name,
+          shouldCancel: () => task.cancelRequested,
+          onProgress: (progress) {
+            task
+              ..sentBytes = progress.sentBytes
+              ..totalBytes = progress.totalBytes
+              ..status = switch (progress.phase) {
+                FileTransferPhase.hashing => FileTaskStatus.hashing,
+                FileTransferPhase.uploading => FileTaskStatus.sending,
+                FileTransferPhase.completed => FileTaskStatus.completed,
+              };
+            _updateForeground(task);
+            notifyListeners();
+          },
+        );
+        task
+          ..status = FileTaskStatus.completed
+          ..sentBytes = task.totalBytes
+          ..sha256 = delivery.sha256
+          ..finishedAt = DateTime.now();
+        return;
+      } on FileTransferCanceledException {
         task
           ..status = FileTaskStatus.canceled
           ..finishedAt = DateTime.now();
-      } else {
+        return;
+      } on ProtocolException catch (error) {
+        if (error.code == ProtocolErrorCode.cancelled) {
+          task
+            ..status = FileTaskStatus.canceled
+            ..finishedAt = DateTime.now();
+        } else {
+          task
+            ..status = FileTaskStatus.failed
+            ..error = describeError(error)
+            ..finishedAt = DateTime.now();
+        }
+        return;
+      } catch (error) {
+        if (task.cancelRequested) {
+          task
+            ..status = FileTaskStatus.canceled
+            ..finishedAt = DateTime.now();
+          return;
+        }
+        final retry =
+            attempts <= _maxAutoRetries && isTransientNetworkError(error);
+        if (retry) {
+          // La PC puede estar ocupada o el Wi-Fi haber tenido un corte corto.
+          // `sendFile` reanuda desde el offset que recuerda la PC gracias al
+          // SHA-256, así que reintentar no duplica datos ya recibidos.
+          await Future<void>.delayed(_autoRetryDelay);
+          continue;
+        }
         task
           ..status = FileTaskStatus.failed
-          ..error = '${error.code}: ${error.message}'
+          ..error = describeError(
+            error,
+            fallback: 'No se pudo enviar el archivo.',
+          )
           ..finishedAt = DateTime.now();
+        return;
+      } finally {
+        await client?.close();
+        notifyListeners();
       }
-    } catch (error) {
-      task
-        ..status = FileTaskStatus.failed
-        ..error = '$error'
-        ..finishedAt = DateTime.now();
-    } finally {
-      await client?.close();
-      notifyListeners();
     }
   }
 
@@ -792,7 +844,7 @@ final class DiscoveryController extends ChangeNotifier {
       id: identity.id,
       name: deviceName,
       platform: currentPlatform(),
-      appVersion: '0.1.0',
+      appVersion: '0.2.0',
     );
   }
 
