@@ -10,9 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/jr-0205/J-SCAN/actions/workflows/ci.yml">
-    <img alt="CI" src="https://github.com/jr-0205/J-SCAN/actions/workflows/ci.yml/badge.svg">
-  </a>
+  <img alt="Beta 0.2.0" src="https://img.shields.io/badge/beta-0.2.0-4D8DDB.svg">
   <a href="LICENSE">
     <img alt="Licencia MIT" src="https://img.shields.io/badge/licencia-MIT-4D8DDB.svg">
   </a>
@@ -228,6 +226,10 @@ reportarla de forma privada.
 Los sprints 0 a 7 están implementados y la beta actual es **0.2.0**. Queda
 pendiente la validación manual en varios modelos de celular y redes reales; la
 lista está en la [guía rápida](docs/guia-rapida.md#8-lista-de-verificación-de-la-beta).
+
+La integración continua de GitHub está en pausa por una restricción de la
+cuenta. Cada versión se verifica localmente con `flutter analyze`, las pruebas
+automatizadas y los builds release de Android y Windows.
 
 ## Contribuir
 
