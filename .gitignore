@@ -26,3 +26,9 @@ apps/*/linux/flutter/ephemeral/
 Thumbs.db
 .DS_Store
 *.log
+
+# Contexto local del asistente (no se publica)
+contexto.txt
+
+# Herramientas locales del editor
+.github/modernize/

@@ -1,163 +1,226 @@
-Con tu aprobación, avanzo con lo siguiente. Como aún no me dijiste tus sistemas, asumo **Android + Windows** primero, y iOS/Mac/Linux después (Flutter lo permite sin rehacer nada).
+<p align="center">
+  <img src="apps/desktop_app/assets/app_icon.png" width="96" alt="Icono de J-SCAN">
+</p>
 
-# Propuesta de tecnologías
+<h1 align="center">J-SCAN</h1>
 
-| Área | Tecnología | Uso |
-|---|---|---|
-| Lenguaje y framework | **Flutter + Dart** | Un solo código para móvil y PC |
-| Organización | **Melos** (monorepo) | Paquetes `core`, `mobile_app`, `desktop_app` |
-| Estado | **Riverpod** | Estado de conexión, transferencias, historial |
-| Servidor en la PC | `shelf` + `shelf_web_socket` | Recibe archivos y mensajes |
-| Cliente en el celular | `dio` + `web_socket_channel` | Envío por partes con progreso |
-| Descubrimiento | **bonsoir** (mDNS) | Anunciar y encontrar la PC en la red |
-| Emparejamiento | `qr_flutter` (PC) + `mobile_scanner` (celular) | QR con IP, puerto y clave |
-| Cifrado | `cryptography` (X25519 + ChaCha20-Poly1305) | Cifrado extremo a extremo sin certificados |
-| Recibir de "Compartir" | `receive_sharing_intent` | Enviar desde cualquier app |
-| Portapapeles | `flutter/services` (móvil), `super_clipboard` (PC) | Leer y escribir texto/imágenes |
-| Escáner | `cunning_document_scanner` (ML Kit en Android, VisionKit en iOS) | Bordes, recorte y filtros |
-| Procesar imagen | `image` (+ OpenCV si hace falta) | Filtros y compresión |
-| PDF | `pdf` + `printing` | PDFs de varias páginas |
-| OCR (opcional) | `google_mlkit_text_recognition` | PDF con texto buscable |
-| Base de datos | **drift** (SQLite) | Dispositivos emparejados e historial |
-| Segundo plano | `flutter_foreground_task` | Envíos largos con pantalla apagada |
-| Ventana de PC | `window_manager`, `tray_manager`, `launch_at_startup` | Bandeja del sistema e inicio automático |
-| Instalador | MSIX o Inno Setup | Distribución en Windows |
-| Pruebas y CI | `flutter_test`, `integration_test`, `mocktail`, GitHub Actions | Calidad automática |
+<p align="center">
+  <strong>Del celular a la PC, por tu red local y cifrado.</strong><br>
+  Envía texto, archivos y documentos escaneados de Android a Windows sin nube ni internet.
+</p>
 
-**Decisión clave de seguridad:** usar cifrado a nivel de aplicación (clave compartida en el QR) en vez de TLS con certificados autofirmados, porque es mucho más simple de implementar en Dart y igual de seguro para este caso.
-
-# Sprints (2 semanas cada uno)
-
-## Sprint 0: Preparación (1 semana)
-- Crear repositorio, monorepo con Melos y CI básico.
-- Definir el **protocolo** en un documento: tipos de mensaje (texto, archivo, ping), formato de partes, errores.
-- Wireframes de 5 pantallas: emparejar, inicio, enviar, escáner, historial.
-- **Listo cuando:** compila "hola mundo" en Android y Windows desde el mismo repo.
-
-## Sprint 1: Conexión local
-- Servidor en la PC en un puerto fijo, con ícono en bandeja.
-- Anuncio y descubrimiento por mDNS.
-- Celular lista las PCs encontradas y envía un "ping".
-- **Listo cuando:** el celular ve la PC y recibe respuesta, sin internet.
-
-## Sprint 2: Emparejamiento y seguridad
-- PC muestra QR; el celular lo escanea y guarda la clave.
-- Intercambio de claves y cifrado de todos los mensajes.
-- Pantalla para ver y borrar dispositivos emparejados.
-- La PC pide confirmación al aceptar un dispositivo nuevo.
-- **Listo cuando:** un dispositivo no emparejado no puede enviar nada.
-
-## Sprint 3: Texto y portapapeles
-- Botón "enviar portapapeles" y campo de texto libre.
-- Opción en el menú "Compartir" del celular para enviar texto o enlaces.
-- La PC copia al portapapeles o lo muestra en una lista, según configuración.
-- Historial guardado en SQLite.
-- **Listo cuando:** compartes un texto desde el navegador del celular y aparece en la PC en menos de 2 segundos.
-
-## Sprint 4: Archivos y multimedia
-- Envío por partes con progreso, cancelación y verificación SHA-256.
-- Reanudación si se corta la conexión.
-- Selección múltiple de archivos, fotos y videos; "Compartir" para archivos.
-- Carpeta de destino configurable en la PC y notificación al terminar.
-- Servicio en primer plano para envíos largos.
-- **Listo cuando:** un video de 1 GB llega íntegro y se reanuda tras desconectar el Wi-Fi.
-
-## Sprint 5: Escáner (parte 1)
-- Captura con detección automática de bordes y corrección de perspectiva.
-- Varias páginas, recorte manual, rotar, reordenar y eliminar.
-- Filtros: original, color mejorado, escala de grises, blanco y negro.
-- **Listo cuando:** escaneas 3 páginas de un documento y se ven rectas y legibles.
-
-## Sprint 6: Escáner (parte 2) y PDF
-- Generación de PDF de varias páginas, con nombre editable y control de calidad/tamaño.
-- Botón "Enviar a la PC" directo desde el escáner.
-- Importar imágenes desde la galería.
-- OCR opcional para PDF buscable.
-- **Listo cuando:** del celular al PC, de la hoja física al PDF recibido, en menos de 30 segundos.
-
-## Sprint 7: Pulido y lanzamiento beta
-- Pruebas en al menos 5 modelos de celular y 2 tipos de red.
-- Manejo de errores claros, reconexión automática, permisos bien explicados.
-- Instalador de Windows y APK de prueba.
-- Guía rápida de uso para los primeros usuarios.
-- **Listo cuando:** 5 personas ajenas al desarrollo logran emparejar y enviar sin ayuda.
-
-# Resumen
-
-| Sprint | Entregable principal |
-|---|---|
-| 0 | Base del proyecto y protocolo |
-| 1 | Celular encuentra la PC |
-| 2 | Emparejamiento cifrado |
-| 3 | Texto y portapapeles |
-| 4 | Archivos y multimedia |
-| 5 | Escáner básico |
-| 6 | PDF y envío desde el escáner |
-| 7 | Beta lista |
-
-**Total: unas 15 semanas (≈ 3.5 meses)** para una sola persona. Con dos desarrolladores se puede hacer en paralelo la app de PC y el escáner a partir del Sprint 3.
-
-Si quieres, puedo pasar todo esto a un documento editable, o detallar las tareas técnicas del Sprint 1 para que arranques de inmediato.
+<p align="center">
+  <a href="https://github.com/jr-0205/J-SCAN/actions/workflows/ci.yml">
+    <img alt="CI" src="https://github.com/jr-0205/J-SCAN/actions/workflows/ci.yml/badge.svg">
+  </a>
+  <a href="LICENSE">
+    <img alt="Licencia MIT" src="https://img.shields.io/badge/licencia-MIT-4D8DDB.svg">
+  </a>
+  <img alt="Flutter" src="https://img.shields.io/badge/Flutter-Android%20%2B%20Windows-02569B?logo=flutter&logoColor=white">
+  <img alt="Protocolo v1" src="https://img.shields.io/badge/protocolo-v1-191A1E.svg">
+</p>
 
 ---
 
-# Estado del repositorio
+## ¿Qué es J-SCAN?
 
-Sprint 0 a Sprint 7 implementados. Los sprints 0–6 están cerrados en código y
-pruebas; el Sprint 7 incluye el pulido de errores, el reintento automático, la guía
-rápida y la lista de validación manual de la beta:
+J-SCAN conecta un celular Android con una PC Windows en la misma red Wi-Fi o
+LAN. Sirve para pasar cosas rápido entre ambos equipos:
 
-- monorepo con Melos (`packages/jscan_core`, `apps/desktop_app`, `apps/mobile_app`);
-- protocolo v1 documentado en [docs/protocol.md](docs/protocol.md), incluidos el
-  emparejamiento, el cifrado, `text`/`clipboard` y la transferencia de archivos;
-- servidor local con puerto fijo, mDNS, bandeja del sistema y UI de actividad;
-- app móvil que descubre PCs, lista IP/puerto y prueba la conexión con ping;
-- **Sprint 2**: QR de un solo uso, identidades X25519 persistentes, HKDF-SHA256,
-  ChaCha20-Poly1305 en todos los mensajes autenticados, confirmación en la PC y
-  gestión/revocación de dispositivos emparejados;
-- un dispositivo no emparejado recibe `not_paired` y la conexión se cierra;
-- **Sprint 3**: envío cifrado de texto libre y portapapeles desde el celular,
-  confirmación `text_ack`/`clipboard_ack`, recepción de `ACTION_SEND` («Compartir»),
-  historial SQLite en la PC (máximo 500 entradas) y copia automática al portapapeles
-  de Windows;
-- **Sprint 4**: envío por partes con progreso, cancelación y verificación SHA-256;
-  reanudación desde `.jscan-partial` tras cortar la conexión; selección múltiple de
-  archivos/fotos/videos en el celular; carpeta de destino configurable y recordada en
-  la PC; notificación al terminar; «Compartir» de archivos en Android y servicio en
-  primer plano para envíos largos (video de 1 GB);
-- **Sprint 5**: escáner con detección automática de bordes y corrección de
-  perspectiva (ML Kit mediante `cunning_document_scanner`), captura de varias páginas,
-  recorte manual nativo, rotación, reordenación y eliminación; filtros original, color
-  mejorado, escala de grises y blanco y negro aplicados desde el original, renderizado
-  en un isolate y páginas temporales que se borran al descartar o cerrar la pantalla;
-- **Sprint 6**: PDF A4 de varias páginas con nombre editable y presets de calidad
-  (alta, equilibrada y compacta), generado con `pdf` en un isolate; importación de
-  imágenes de la galería; botón **Crear PDF y enviar** que reutiliza la transferencia
-  cifrada del Sprint 4 con progreso, cancelación y reanudación; exportaciones
-  temporales que se limpian a los 1 día;
-- **Sprint 7**: mensajes de error accionables en español (`describeError`), reintento
-  automático único ante cortes de red, guía rápida con permisos explicados y lista de
-  verificación de la beta; versión `0.2.0+2` en ambas apps;
-- instalador de Windows con Inno Setup (por usuario, sin administrador) generado por
-  `apps/desktop_app/tool/build_installer.ps1`;
-- CI en GitHub Actions y pruebas automáticas (incluidas la prueba mDNS E2E con
-  emparejamiento y ping cifrado, el envío cifrado de texto, el historial SQLite y la
-  transferencia de archivos con reanudación y hash).
+- enviar texto, enlaces o el portapapeles a la PC;
+- transferir archivos, fotos y videos con progreso, cancelación y reanudación;
+- escanear hojas con la cámara, aplicar filtros y mandar el PDF directamente a la PC.
 
-> **Instalador de Windows:** `apps/desktop_app/build/installer/JScan-Setup-0.2.0.exe`
-> (Inno Setup, instalación por usuario sin administrador). Se regenera con
-> `powershell -ExecutionPolicy Bypass -File apps/desktop_app/tool/build_installer.ps1`.
-> El build portable sigue disponible en
-> `apps/desktop_app/build/windows/x64/runner/Release/`.
->
-> **APK de prueba:** `apps/mobile_app/build/app/outputs/flutter-apk/app-debug.apk`.
+Todo viaja **cifrado de extremo a extremo** y **nunca sale de la red local**. No
+hay cuentas, servidores en la nube ni conexión a internet.
 
-Guía de ejecución: [docs/getting-started.md](docs/getting-started.md).
-Guía rápida para la beta: [docs/guia-rapida.md](docs/guia-rapida.md).
+## Características
 
-> **Pendiente de validación manual (Sprint 7):** los criterios de 5 modelos de
-> celular, 2 redes y 5 personas ajenas al desarrollo requieren dispositivos y
-> personas reales. La guía rápida incluye la tabla para completarlos.
+- **Descubrimiento automático** de la PC por mDNS (`_jscan._tcp.local`).
+- **Emparejamiento con QR** de un solo uso y confirmación explícita en la PC.
+- **Cifrado** X25519 + HKDF-SHA256 + ChaCha20-Poly1305 en todos los mensajes
+  posteriores a la autenticación.
+- **Texto y portapapeles** con confirmación de entrega e historial SQLite en la PC.
+- **Archivos** por partes con progreso, cancelación, reanudación tras cortes y
+  verificación SHA-256 (hasta 8 GiB por archivo).
+- **Compartir desde otras apps** de Android con `Compartir → J-SCAN`.
+- **Escáner** con detección de bordes, corrección de perspectiva, recorte manual,
+  rotación, reordenación y filtros (original, color, gris y blanco y negro).
+- **PDF A4** de varias páginas con nombre editable y presets de calidad.
+- **Servicio en primer plano** para envíos largos con la pantalla apagada.
+- **Interfaz oscura compartida** entre Android y Windows (`packages/jscan_ui`).
 
+## Cómo funciona
 
- opencode -s ses_e6ca0e5e8ffeEncD11sHKrx3Zs
+```mermaid
+flowchart LR
+    subgraph Phone["Android · mobile_app"]
+        UI["UI Material 3 + jscan_ui"]
+        SC["Escáner + PDF"]
+        CL["JScanClient"]
+    end
+    subgraph PC["Windows · desktop_app"]
+        SRV["LocalServer (shelf)"]
+        HIS["Historial SQLite"]
+        FIL["Archivos + SHA-256"]
+    end
+    UI --> CL
+    SC --> CL
+    CL <-->|"WebSocket cifrado<br/>X25519 · ChaCha20-Poly1305"| SRV
+    SRV --> HIS
+    SRV --> FIL
+    MDNS["mDNS _jscan._tcp"] -.-> CL
+    MDNS -.-> SRV
+```
+
+El protocolo está documentado en [`docs/protocol.md`](docs/protocol.md) y se
+mantiene en **v1**.
+
+## Estructura del monorepo
+
+```text
+J-SCAN/
+├── apps/
+│   ├── desktop_app/   Flutter Windows · servidor, QR, bandeja e historial
+│   └── mobile_app/    Flutter Android · descubrimiento, envío, escáner y PDF
+├── packages/
+│   ├── jscan_core/    Dart puro · protocolo, cifrado, servidor, cliente y mDNS
+│   └── jscan_ui/      Flutter · tokens, tema oscuro y componentes compartidos
+├── docs/              protocolo, arquitectura, guías y wireframes
+├── tool/              utilidades del repositorio
+└── melos.yaml         scripts del monorepo
+```
+
+| Paquete | Rol |
+|---|---|
+| `jscan_core` | Lógica compartida sin Flutter: protocolo, criptografía, servidor, cliente, mDNS y archivos. |
+| `jscan_ui` | Sistema visual: paleta grafito, tema oscuro único y componentes reutilizables. |
+| `desktop_app` | App de Windows: servidor local, QR de emparejamiento, historial y recepción de archivos. |
+| `mobile_app` | App de Android: descubrimiento, emparejamiento, envíos, escáner y PDF. |
+
+## Requisitos
+
+- **Flutter 3.47 o superior** (Dart incluido).
+- **Windows 10/11** para la app de escritorio.
+- **Android 8+** para el celular.
+- PC y celular en la **misma red** Wi-Fi o LAN. No hace falta internet.
+
+## Puesta en marcha
+
+```bash
+git clone https://github.com/jr-0205/J-SCAN.git
+cd J-SCAN
+dart pub global activate melos
+melos bootstrap
+```
+
+Sin Melos, instala cada paquete por separado:
+
+```bash
+cd packages/jscan_core && dart pub get
+cd ../../apps/desktop_app && flutter pub get
+cd ../mobile_app && flutter pub get
+```
+
+### App de escritorio (Windows)
+
+```bash
+cd apps/desktop_app
+flutter run -d windows
+```
+
+La PC abre el puerto **47821**, publica el servicio por mDNS y muestra el QR de
+emparejamiento. Al cerrar la ventana se queda en la bandeja del sistema.
+
+Para generar el ejecutable y el instalador:
+
+```bash
+flutter build windows --release
+powershell -ExecutionPolicy Bypass -File tool/build_installer.ps1
+```
+
+El instalador usa **Inno Setup 6** y se instala por usuario, sin permisos de
+administrador. El resultado queda en `apps/desktop_app/build/installer/`.
+
+### App Android
+
+```bash
+cd apps/mobile_app
+flutter run -d <id-del-dispositivo>
+```
+
+Para compilar el APK de prueba:
+
+```bash
+flutter build apk --debug
+```
+
+El artefacto queda en `apps/mobile_app/build/app/outputs/flutter-apk/app-debug.apk`.
+
+La primera vez Android pedirá permiso de cámara y notificaciones. Si deniegas la
+cámara, todavía puedes emparejar con **Pegar código** y enviar archivos.
+
+## Pruebas
+
+```bash
+# Protocolo, cifrado, emparejamiento, servidor/cliente, archivos y mDNS E2E
+cd packages/jscan_core
+dart test
+
+# Widgets, historial SQLite y flujos de UI
+cd apps/desktop_app && flutter test
+cd ../mobile_app && flutter test
+
+# Análisis estático
+dart analyze                  # jscan_core
+flutter analyze               # cada app y jscan_ui
+```
+
+La integración continua de GitHub Actions ejecuta formato, análisis, pruebas y
+el build de Windows. El flujo está en
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+
+## Seguridad y privacidad
+
+- La clave se acuerda con **X25519** y nunca viaja por la red.
+- Todos los mensajes autenticados usan **ChaCha20-Poly1305**; las comparaciones de
+  tokens, MACs y claves públicas son en tiempo constante.
+- La PC solo acepta dispositivos confirmados manualmente y puede revocarlos.
+- Los archivos se guardan únicamente en la carpeta elegida; los parciales y
+  exportaciones temporales se limpian solos.
+- No hay telemetría, cuentas ni servidores externos.
+
+¿Encontraste una vulnerabilidad? Consulta [`SECURITY.md`](SECURITY.md) para
+reportarla de forma privada.
+
+## Documentación
+
+- [Cómo ejecutar y probar](docs/getting-started.md)
+- [Guía rápida para la beta](docs/guia-rapida.md)
+- [Protocolo v1](docs/protocol.md)
+- [Arquitectura](docs/architecture.md)
+- [Wireframes](docs/wireframes.md)
+
+## Estado del proyecto
+
+Los sprints 0 a 7 están implementados y la beta actual es **0.2.0**. Queda
+pendiente la validación manual en varios modelos de celular y redes reales; la
+lista está en la [guía rápida](docs/guia-rapida.md#8-lista-de-verificación-de-la-beta).
+
+## Contribuir
+
+Las contribuciones son bienvenidas. Antes de abrir un pull request:
+
+1. ejecuta `dart format .`, `flutter analyze` y las pruebas del paquete o app que
+   hayas tocado;
+2. mantén el protocolo en **v1** salvo que el cambio esté documentado y probado;
+3. describe el problema, la solución y cómo lo verificaste.
+
+Para fallos, incluye modelo de celular, versión de Android, versión de Windows,
+tipo de red y el mensaje de error completo. Más detalles en
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+## Licencia
+
+Este proyecto se distribuye bajo la licencia **MIT**. Consulta
+[`LICENSE`](LICENSE).
