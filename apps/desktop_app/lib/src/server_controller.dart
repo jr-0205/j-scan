@@ -21,7 +21,7 @@ final class ActivityEntry {
 
 /// Arranca el servidor local y el anunciante mDNS, y mantiene el estado
 /// que consume la UI (sesiones, dispositivos emparejados, QR y actividad).
-final class ServerController extends ChangeNotifier {
+class ServerController extends ChangeNotifier {
   ServerController({this.autoStart = true}) {
     if (autoStart) {
       unawaited(start());

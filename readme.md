@@ -34,6 +34,28 @@ LAN. Sirve para pasar cosas rápido entre ambos equipos:
 Todo viaja **cifrado de extremo a extremo** y **nunca sale de la red local**. No
 hay cuentas, servidores en la nube ni conexión a internet.
 
+## Capturas
+
+<p align="center">
+  <img src="docs/screenshots/escritorio-inicio.png" width="49%" alt="J-SCAN en Windows: servidor activo, dirección y emparejamiento">
+  <img src="docs/screenshots/escritorio-archivos.png" width="49%" alt="J-SCAN en Windows: textos recibidos, archivos y verificación SHA-256">
+</p>
+
+## Descargas
+
+La beta **0.2.0** está publicada en
+[GitHub Releases](https://github.com/jr-0205/J-SCAN/releases/tag/v0.2.0):
+
+| Archivo | Para qué sirve |
+|---|---|
+| `JScan-Setup-0.2.0.exe` | Instalador de Windows 10/11, por usuario y sin permisos de administrador. |
+| `app-arm64-v8a-release.apk` | Celulares Android actuales (64 bits). |
+| `app-armeabi-v7a-release.apk` | Celulares Android antiguos de 32 bits. |
+| `app-x86_64-release.apk` | Emuladores y equipos con CPU Intel. |
+
+Los APK de esta beta usan una firma de desarrollo; instálalos solo desde esta
+release y con la opción de orígenes desconocidos habilitada.
+
 ## Características
 
 - **Descubrimiento automático** de la PC por mDNS (`_jscan._tcp.local`).

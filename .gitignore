@@ -32,3 +32,6 @@ contexto.txt
 
 # Herramientas locales del editor
 .github/modernize/
+
+# Capturas generadas por el arnés de documentación
+apps/desktop_app/tool/screenshots/out/

@@ -10,7 +10,8 @@ mensajes de error están escritos para decir qué revisar.
   conecte el celular.
 - Un celular **Android 8 o superior** con cámara.
 - Ambos equipos en la **misma red**. No hace falta internet.
-- El instalador `JScan-Setup-0.2.0.exe` y el APK de prueba `app-debug.apk`.
+- El instalador `JScan-Setup-0.2.0.exe` y el APK de la release que corresponda a
+  tu celular (`app-arm64-v8a-release.apk` en la mayoría de los casos).
 
 ## 1. Instalar la PC
 
