@@ -1,4 +1,4 @@
-# Guía rápida de J-SCAN (beta 0.2.0)
+# Guía rápida de J-SCAN (beta 0.2.1)
 
 Esta guía está pensada para instalar J-SCAN y probarlo sin ayuda técnica. Si algo
 no coincide con lo que ves en pantalla, anota el mensaje exacto y avísanos: los
@@ -10,12 +10,12 @@ mensajes de error están escritos para decir qué revisar.
   conecte el celular.
 - Un celular **Android 8 o superior** con cámara.
 - Ambos equipos en la **misma red**. No hace falta internet.
-- El instalador `JScan-Setup-0.2.0.exe` y el APK de la release que corresponda a
+- El instalador `JScan-Setup-0.2.1.exe` y el APK de la release que corresponda a
   tu celular (`app-arm64-v8a-release.apk` en la mayoría de los casos).
 
 ## 1. Instalar la PC
 
-1. Ejecuta `JScan-Setup-0.2.0.exe` y acepta. Se instala en tu usuario, sin pedir
+1. Ejecuta `JScan-Setup-0.2.1.exe` y acepta. Se instala en tu usuario, sin pedir
    contraseña de administrador.
 2. Abre **J-SCAN** desde el menú Inicio.
 3. La primera vez, Windows Firewall preguntará si J-SCAN puede comunicarse en
@@ -24,12 +24,14 @@ mensajes de error están escritos para decir qué revisar.
    (normalmente `47821`). Si dice **Servidor detenido**, cierra otra copia de
    J-SCAN y vuelve a abrirla.
 
-La app se queda en la bandeja del sistema al cerrar la ventana. Para salir del
-todo, usa el menú del icono de J-SCAN → **Salir**.
+Al cerrar la ventana, J-SCAN detiene el servidor y el anuncio mDNS, y termina.
+Así el celular deja de ver la PC y el puerto queda libre de inmediato. También
+puedes salir desde el menú del icono de J-SCAN en la bandeja → **Salir**.
 
 ## 2. Instalar el celular
 
-1. Copia `app-debug.apk` al celular (cable, Google Drive o el método que prefieras).
+1. Copia el APK de la release que corresponda a tu celular (cable, Google Drive
+   o el método que prefieras).
 2. Abre el archivo y acepta **Instalar apps desconocidas** para esa aplicación.
    Es normal: el APK de prueba no está publicado en Play Store.
 3. Abre **J-SCAN**. La primera vez pedirá permiso de **cámara** (para el QR y el

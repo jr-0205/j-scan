@@ -44,8 +44,8 @@ La app:
 6. muestra la bandeja **Textos y portapapeles** con el historial SQLite, permite
    copiar, borrar o vaciar entradas y, si está activo, copia automáticamente el
    último texto recibido al portapapeles de Windows;
-7. se oculta a la bandeja del sistema al cerrar la ventana (salir desde el menú
-   del icono).
+7. detiene el servidor y el anuncio mDNS al cerrar la ventana; el icono de la
+   bandeja permite volver a abrirla mientras la app está en ejecución.
 
 Para compilar el `.exe`:
 

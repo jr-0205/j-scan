@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img alt="Beta 0.2.0" src="https://img.shields.io/badge/beta-0.2.0-4D8DDB.svg">
+  <img alt="Beta 0.2.1" src="https://img.shields.io/badge/beta-0.2.1-4D8DDB.svg">
   <a href="LICENSE">
     <img alt="Licencia MIT" src="https://img.shields.io/badge/licencia-MIT-4D8DDB.svg">
   </a>
@@ -41,12 +41,12 @@ hay cuentas, servidores en la nube ni conexión a internet.
 
 ## Descargas
 
-La beta **0.2.0** está publicada en
-[GitHub Releases](https://github.com/jr-0205/J-SCAN/releases/tag/v0.2.0):
+La beta **0.2.1** está publicada en
+[GitHub Releases](https://github.com/jr-0205/J-SCAN/releases/tag/v0.2.1):
 
 | Archivo | Para qué sirve |
 |---|---|
-| `JScan-Setup-0.2.0.exe` | Instalador de Windows 10/11, por usuario y sin permisos de administrador. |
+| `JScan-Setup-0.2.1.exe` | Instalador de Windows 10/11, por usuario y sin permisos de administrador. |
 | `app-arm64-v8a-release.apk` | Celulares Android actuales (64 bits). |
 | `app-armeabi-v7a-release.apk` | Celulares Android antiguos de 32 bits. |
 | `app-x86_64-release.apk` | Emuladores y equipos con CPU Intel. |
@@ -150,7 +150,8 @@ flutter run -d windows
 ```
 
 La PC abre el puerto **47821**, publica el servicio por mDNS y muestra el QR de
-emparejamiento. Al cerrar la ventana se queda en la bandeja del sistema.
+emparejamiento. Al cerrar la ventana se detienen el servidor y el anuncio mDNS, y
+la app termina.
 
 Para generar el ejecutable y el instalador:
 
@@ -223,7 +224,7 @@ reportarla de forma privada.
 
 ## Estado del proyecto
 
-Los sprints 0 a 7 están implementados y la beta actual es **0.2.0**. Queda
+Los sprints 0 a 7 están implementados y la beta actual es **0.2.1**. Queda
 pendiente la validación manual en varios modelos de celular y redes reales; la
 lista está en la [guía rápida](docs/guia-rapida.md#8-lista-de-verificación-de-la-beta).
 

@@ -107,7 +107,7 @@ class ServerController extends ChangeNotifier {
         history: _openHistory(support),
         downloadDirectory: Directory(directory),
         onPairingRequest: _confirmPairing,
-        appVersion: '0.2.0',
+        appVersion: '0.2.1',
       );
       _server = server;
       _events = server.events.listen(_onEvent);
@@ -451,6 +451,18 @@ class ServerController extends ChangeNotifier {
     _server = null;
     sessions = const <ClientSession>[];
     pairedDevices = const <PairedDevice>[];
+  }
+
+  /// Detiene el servidor, el anuncio mDNS y las sesiones activas.
+  ///
+  /// Se usa al cerrar la ventana para liberar el puerto y dejar de anunciarse
+  /// en la red de inmediato, sin esperar a que el proceso termine.
+  Future<void> shutdown() async {
+    if (status == ServerStatus.idle && _server == null) return;
+    await _stopResources();
+    status = ServerStatus.idle;
+    errorMessage = null;
+    notifyListeners();
   }
 
   @override

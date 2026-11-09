@@ -7,7 +7,11 @@ import 'package:window_manager/window_manager.dart';
 
 /// Icono de bandeja y comportamiento de la ventana en Windows.
 final class TrayController with TrayListener, WindowListener {
+  TrayController({Future<void> Function()? onQuit}) : _onQuit = onQuit;
+
+  final Future<void> Function()? _onQuit;
   bool _initialized = false;
+  bool _quitting = false;
 
   Future<void> init() async {
     if (_initialized || !Platform.isWindows) return;
@@ -17,7 +21,7 @@ final class TrayController with TrayListener, WindowListener {
     trayManager.addListener(this);
 
     await trayManager.setIcon('assets/tray_icon.ico');
-    await trayManager.setToolTip('J-SCAN — servidor local');
+    await trayManager.setToolTip('J-SCAN · servidor local');
     await trayManager.setContextMenu(
       Menu(
         items: <MenuItem>[
@@ -53,7 +57,7 @@ final class TrayController with TrayListener, WindowListener {
 
   @override
   void onWindowClose() {
-    unawaited(windowManager.hide());
+    unawaited(_quit());
   }
 
   Future<void> _showWindow() async {
@@ -61,9 +65,21 @@ final class TrayController with TrayListener, WindowListener {
     await windowManager.focus();
   }
 
+  /// Detiene el servidor y el anuncio mDNS antes de terminar el proceso, de
+  /// modo que la PC deje de aparecer en el celular al cerrar la ventana.
   Future<void> _quit() async {
-    await windowManager.destroy();
-    exit(0);
+    if (_quitting) return;
+    _quitting = true;
+    try {
+      await _onQuit?.call();
+    } finally {
+      try {
+        await windowManager.destroy();
+      } catch (_) {
+        // La ventana ya pudo haberse cerrado.
+      }
+      exit(0);
+    }
   }
 
   void dispose() {
