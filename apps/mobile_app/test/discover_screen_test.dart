@@ -8,6 +8,13 @@ import 'package:mobile_app/src/storage/mobile_store.dart';
 void main() {
   testWidgets('muestra el estado vacío y las acciones del Sprint 2',
       (tester) async {
+    // La pantalla creció con el escáner: usamos un lienzo alto para que el
+    // ListView construya también la sección de PCs.
+    tester.view.physicalSize = const Size(800, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     final controller = DiscoveryController(
       autoStart: false,
       store: MemoryKeyValueStore(),

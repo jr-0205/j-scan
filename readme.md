@@ -103,7 +103,7 @@ Si quieres, puedo pasar todo esto a un documento editable, o detallar las tareas
 
 # Estado del repositorio
 
-Sprint 0, Sprint 1, Sprint 2, Sprint 3 y Sprint 4 implementados:
+Sprint 0, Sprint 1, Sprint 2, Sprint 3, Sprint 4 y Sprint 5 implementados:
 
 - monorepo con Melos (`packages/jscan_core`, `apps/desktop_app`, `apps/mobile_app`);
 - protocolo v1 documentado en [docs/protocol.md](docs/protocol.md), incluidos el
@@ -123,6 +123,11 @@ Sprint 0, Sprint 1, Sprint 2, Sprint 3 y Sprint 4 implementados:
   archivos/fotos/videos en el celular; carpeta de destino configurable y recordada en
   la PC; notificación al terminar; «Compartir» de archivos en Android y servicio en
   primer plano para envíos largos (video de 1 GB);
+- **Sprint 5**: escáner con detección automática de bordes y corrección de
+  perspectiva (ML Kit mediante `cunning_document_scanner`), captura de varias páginas,
+  recorte manual nativo, rotación, reordenación y eliminación; filtros original, color
+  mejorado, escala de grises y blanco y negro aplicados desde el original, renderizado
+  en un isolate y páginas temporales que se borran al descartar o cerrar la pantalla;
 - instalador de Windows con Inno Setup (por usuario, sin administrador) generado por
   `apps/desktop_app/tool/build_installer.ps1`;
 - CI en GitHub Actions y pruebas automáticas (incluidas la prueba mDNS E2E con

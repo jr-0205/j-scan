@@ -58,7 +58,7 @@ La confirmación caduca en 1 minuto y se rechaza automáticamente.
 
 ```text
 +----------------------------------+
-|  J-SCAN              [🛡 1] [↻]  |
+|  J-SCAN        [📄] [🛡 1] [↻]  |
 +----------------------------------+
 |  Misma red Wi-Fi                 |
 |  Emparejamiento se hace una vez  |
@@ -67,6 +67,11 @@ La confirmación caduca en 1 minuto y se rechaza automáticamente.
 |  En la PC pulsa «Emparejar       |
 |  dispositivo».                   |
 |  [ Escanear QR ] [ Pegar código ]|
+|                                  |
+|  Escanear documento        [Abrir]|
+|  Detecta los bordes, corrige la  |
+|  perspectiva y admite varias     |
+|  páginas. No necesita una PC.    |
 |                                  |
 |  1 PC emparejada       [ Ver ]   |
 |                                  |
@@ -79,6 +84,9 @@ La confirmación caduca en 1 minuto y se rechaza automáticamente.
 |  +----------------------------+  |
 +----------------------------------+
 ```
+
+El icono 📄 y la tarjeta **Escanear documento** abren el escáner del Sprint 5 sin
+necesidad de emparejar la PC.
 
 Estados: preparando identidad · buscando · sin PCs · PC sin emparejar (**Emparejar**)
 · PC emparejada (**Conectar**) · prueba en curso · error.
@@ -257,21 +265,31 @@ cancelado · nombre duplicado renombrado. La carpeta se recuerda en `settings.js
 ## 12. Escáner (Sprint 5)
 
 ```text
-+----------------------------------+
-|  <   Escanear          [Flash]   |
-+----------------------------------+
-|                                  |
-|      +--------------------+      |
-|      |  Bordes detectados |      |
-|      |      documento     |      |
-|      +--------------------+      |
-|                                  |
-|  Páginas: [1] [2] [3] [+]        |
-|                                  |
-|  [ Original ][ Color ][ BN ]     |
-|                                  |
-|  [       Continuar       ]       |
-+----------------------------------+
++--------------------------------------------------+
+|  ←  Escáner                          [🗑 Descartar]|
++--------------------------------------------------+
+|  Página 2 de 2                      Original · 90° |
+|  (Original) (Color) (Gris) (B/N)                  |
+|  ----------------------------------------------  |
+|  ⠿  [miniatura]  Página 1          [↻] [🗑]      |
+|      Original                                     |
+|  ----------------------------------------------  |
+|  ⠿  [miniatura]  Página 2          [↻] [🗑]      |
+|      Original · 90°                               |
+|                                                   |
+|  [ + Añadir páginas ]   [ 🔍 Vista previa ]       |
++--------------------------------------------------+
 ```
 
-Estados: detectando bordes · capturando · revisando páginas.
+La cámara nativa hace la detección de bordes, el recorte manual y la corrección de
+perspectiva antes de devolver cada página. La app muestra hasta 12 páginas por sesión;
+cada una se puede rotar, reordenar (arrastrando desde ⠿) o eliminar. Al elegir una
+página, la barra superior de filtros cambia solo esa página. **Vista previa** abre
+las páginas a pantalla completa con zoom y deslizamiento.
+
+Estado vacío: tarjeta «Escanea un documento» con la explicación de bordes, filtros y
+orden, y el botón **Escanear documento**.
+
+Estados: sin páginas · capturando (cámara nativa) · procesando (filtro/rotación con
+overlay) · revisando páginas · vista previa · confirmación de descarte.
+El envío a la PC y el PDF corresponden al Sprint 6.

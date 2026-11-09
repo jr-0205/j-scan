@@ -1,4 +1,4 @@
-# Cómo ejecutar J-SCAN (Sprint 0 + 1 + 2 + 3 + 4)
+# Cómo ejecutar J-SCAN (Sprint 0 + 1 + 2 + 3 + 4 + 5)
 
 ## Requisitos
 
@@ -172,6 +172,29 @@ Desde Galería, Archivos o cualquier app con **Compartir → J-SCAN**:
   se encolan automáticamente;
 - si hay cero o varias PCs, la app muestra una tarjeta para elegir el destino.
 
+## Escanear documentos (Sprint 5)
+
+No hace falta emparejar una PC: el escáner funciona solo en el celular.
+
+1. En la pantalla principal pulsa el icono de escáner de la barra superior o la
+   tarjeta **Escanear documento**.
+2. Pulsa **Escanear documento**. La cámara detecta los bordes de la hoja; puedes
+   ajustar el recorte a mano antes de confirmar. Repite para cada página (hasta 12
+   por sesión).
+3. Cada página aparece en una lista con su miniatura. Toca una para seleccionarla y
+   usar la barra de filtros: **Original**, **Color** (contraste y saturación
+   mejorados), **Gris** o **B/N**.
+4. Usa los botones de cada página para **rotar 90°** o **eliminar**. Arrastra desde
+   el icono de la izquierda para reordenar.
+5. **Vista previa** abre las páginas a pantalla completa con zoom por pellizco y
+   deslizamiento entre páginas.
+6. El icono de la papelera en la barra superior descarta todo el escaneo tras
+   confirmarlo. Al salir de la pantalla también se borran los archivos temporales.
+
+El filtro y la rotación se aplican siempre desde la foto original, así que puedes
+cambiar de filtro sin perder calidad. El envío a la PC y la exportación a PDF llegan
+en el Sprint 6.
+
 ## Verificar desde la terminal
 
 Con la app de escritorio abierta, busca PCs por mDNS:
@@ -234,7 +257,12 @@ cubre el envío cifrado de `text`/`clipboard`, su rechazo sin emparejar y el lí
 64 KiB; `apps/desktop_app/test/sqlite_history_test.dart` comprueba el historial SQLite
 real sobre `winsqlite3.dll`. `packages/jscan_core/test/file_transfer_test.dart` cubre
 el envío completo, la reanudación desde `.part`, el SHA-256 incorrecto, la
-cancelación y el rechazo sin emparejar.
+cancelación y el rechazo sin emparejar. En el celular,
+`apps/mobile_app/test/scan_pipeline_test.dart` verifica los filtros, la rotación y la
+escala; `scan_controller_test.dart` cubre la captura, el orden, los archivos
+temporales y la limpieza; `scan_screen_test.dart` comprueba la pantalla del escáner.
+Los tests de widgets que usan archivos reales envuelven la E/S en
+`tester.runAsync`, porque el reloj de `testWidgets` es falso.
 
 ## Problemas frecuentes
 
@@ -254,6 +282,8 @@ cancelación y el rechazo sin emparejar.
 | «No se pudo crear la carpeta» | La ruta elegida no es escribible | Elegir otra carpeta con **Cambiar** |
 | El envío se corta al apagar la pantalla | Android suspendió el proceso o negó la notificación | Aceptar el permiso de notificaciones y mantener el servicio en primer plano |
 | «Compartir» no muestra J-SCAN | Android aún no registró el intent | Reinstalar/actualizar el APK y reiniciar el celular |
+| El escáner no abre la cámara | Permiso de cámara denegado | Activarlo en Ajustes → Apps → J-SCAN → Permisos → Cámara |
+| «No se pudo aplicar el filtro» | Poca memoria al procesar una foto muy grande | Cerrar otras apps y reintentar; el escáner limita el lado mayor a 2600 px |
 | `ISCC.exe` no encontrado al generar el instalador | Inno Setup no está instalado | `winget install JRSoftware.InnoSetup` |
 | Windows muestra «aplicación desconocida» al abrir el instalador | El `.exe` no está firmado | Es esperado sin certificado de code signing; usar «Más información → Ejecutar de todas formas» |
 
@@ -266,8 +296,9 @@ cancelación y el rechazo sin emparejar.
   configurable. El instalador está en `installer/jscan.iss` y se compila con
   `tool/build_installer.ps1`.
 - `apps/mobile_app`: descubrimiento, emparejamiento, lista de PCs, ping cifrado,
-  envío de texto/portapapeles y de archivos, recepción de «Compartir» y servicio en
-  primer plano.
-- `docs/protocol.md`: contrato del protocolo v1 y criterios de los sprints 2, 3 y 4.
+  envío de texto/portapapeles y de archivos, recepción de «Compartir», servicio en
+  primer plano y escáner con filtros y varias páginas.
+- `docs/protocol.md`: contrato del protocolo v1 y criterios de los sprints 2, 3 y 4
+  (el Sprint 5 no cambia el protocolo: el escáner es local).
 - `docs/architecture.md`: decisiones técnicas.
 - `docs/wireframes.md`: pantallas de los sprints 2 a 6.

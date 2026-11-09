@@ -7,11 +7,13 @@ environment:
   sdk: ^3.6.0
 
 dependencies:
+  cunning_document_scanner: ^3.0.4
   file_picker: ^13.3.2
   flutter:
     sdk: flutter
   flutter_riverpod: 2.6.1
   flutter_secure_storage: ^11.2.0
+  image: ^4.12.0
   jscan_core:
     path: ../../packages/jscan_core
   mobile_scanner: ^7.4.3

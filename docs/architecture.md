@@ -108,6 +108,33 @@ Decisiones clave:
 - Los archivos recibidos se anuncian con `ServerFileProgress` y `ServerFileReceived`;
   la UI de la PC no hace polling.
 
+## Módulos del Sprint 5
+
+| Módulo | Responsabilidad |
+|---|---|
+| `scanner/scan_pipeline.dart` | `ScanFilter`, `ScanRenderRequest`/`ScanRenderResult` y `renderScanPage`: rotación, escala y filtros sobre el original. |
+| `scanner/scan_controller.dart` | `ScannedPage` y `ScanController`: captura nativa, copia a carpeta propia, filtros, rotación, orden, eliminación y limpieza. |
+| `mobile_app/screens/scan_screen.dart` | Estado vacío, barra de filtros, lista reordenable con miniaturas, rotar/eliminar y vista previa con zoom. |
+| `mobile_app/screens/discover_screen.dart` | Acceso al escáner desde la barra superior y tarjeta «Escanear documento» siempre visible. |
+| `cunning_document_scanner` (plugin) | Cámara nativa con detección de bordes, recorte manual y corrección de perspectiva (ML Kit en Android, VisionKit en iOS). |
+
+Decisiones clave:
+
+- **El original es la fuente de verdad.** Cada filtro o rotación se aplica desde el
+  archivo que devolvió el escáner, nunca sobre el JPEG ya procesado. Así no se
+  acumula pérdida por recomprimir y volver a «Original» restaura el archivo intacto.
+- **Renderizado fuera del hilo de UI.** `renderScanPage` se ejecuta con
+  `Isolate.run`, de modo que una foto de 12 MP no bloquea la interfaz.
+- **Lado mayor máximo de 2600 px** (~220 ppp en A4): suficiente para leer y reducir
+  el PDF del Sprint 6 sin guardar fotos completas en memoria.
+- **Carpeta temporal propia** `jscan_scans_<micros>`: el plugin puede limpiar su
+  caché sin afectar las páginas; la app borra sus archivos al eliminar, descartar o
+  cerrar la pantalla.
+- **`reorder(oldIndex, newIndex)` usa el índice final** que entrega
+  `ReorderableListView.onReorderItem`, sin el ajuste de `onReorder` obsoleto.
+- `ScanController` acepta `capture`, `renderer` y `storage` inyectables: los tests
+  cubren captura, filtros, rotación, orden y limpieza sin canales de plataforma.
+
 ## Descubrimiento sin plugins
 
 El readme propone `bonsoir`. Para el Sprint 1 se implementó mDNS directamente con
@@ -142,6 +169,7 @@ añadir `multicast_lock` en `mobile_app` sin cambiar el protocolo.
 | PCs autorizadas | — | `flutter_secure_storage` |
 | Textos y portapapeles | `history.sqlite` (SQLite) | memoria de la sesión |
 | Archivos recibidos | carpeta configurable (por defecto `Descargas`) + `.jscan-partial/` | — |
+| Páginas escaneadas | — | carpeta temporal `jscan_scans_<micros>` (se borra al cerrar o descartar) |
 | Preferencias | `settings.json` (copia automática y carpeta de archivos) | — |
 
 Los IDs de servidor y dispositivo son estables desde el Sprint 2. En el Sprint 3
@@ -208,3 +236,15 @@ Sprint 4:
   antes de leerlos; no se envían `content://` fuera del proceso.
 - El servicio en primer plano de Android solo muestra una notificación de progreso;
   no mueve bytes ni concede permisos adicionales.
+
+Sprint 5:
+
+- El escáner solo usa la cámara; el permiso lo declara el plugin nativo y la app
+  muestra un mensaje claro si el usuario lo deniega.
+- Las páginas y sus versiones filtradas se guardan en una carpeta temporal privada
+  de la app. Al eliminar una página, descartar el escaneo o cerrar la pantalla se
+  borran sus archivos; nada se envía ni se comparte desde el escáner en este sprint.
+- El filtro y la rotación se aplican siempre sobre el original, así que volver a
+  «Original» no deja una copia recompuesta ni degradada.
+- `cunning_document_scanner` procesa la imagen en el dispositivo (ML Kit); no se
+  sube ninguna foto a un servicio externo.

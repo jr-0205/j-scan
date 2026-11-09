@@ -6,6 +6,7 @@ import '../widgets/probe_result_view.dart';
 import 'pair_code_dialog.dart';
 import 'paired_servers_screen.dart';
 import 'qr_scan_screen.dart';
+import 'scan_screen.dart';
 import 'send_file_screen.dart';
 import 'send_text_screen.dart';
 
@@ -54,6 +55,11 @@ class DiscoverScreen extends StatelessWidget {
               ],
             ),
             actions: <Widget>[
+              IconButton(
+                tooltip: 'Escanear documento',
+                onPressed: () => ScanScreen.open(context),
+                icon: const Icon(Icons.document_scanner_outlined),
+              ),
               if (paired.isNotEmpty) ...<Widget>[
                 IconButton(
                   tooltip: 'Enviar archivos',
@@ -114,6 +120,8 @@ class DiscoverScreen extends StatelessWidget {
                     onScan: () => _scanQr(context),
                     onPaste: () => _pasteCode(context),
                   ),
+                  const SizedBox(height: 12),
+                  _ScanCard(onOpen: () => ScanScreen.open(context)),
                   if (paired.isNotEmpty) ...<Widget>[
                     const SizedBox(height: 12),
                     _SendFilesCard(controller: controller),
@@ -155,9 +163,9 @@ class DiscoverScreen extends StatelessWidget {
                 ],
                 const SizedBox(height: 24),
                 Text(
-                  'Sprint 4 · archivos, fotos y videos cifrados con '
-                  'ChaCha20-Poly1305, progreso, cancelación, reanudación, '
-                  'SHA-256 y envío directo desde el menú «Compartir».',
+                  'Sprint 5 · escáner con detección de bordes, corrección de '
+                  'perspectiva, varias páginas, rotación, orden y filtros. '
+                  'El cifrado y la reanudación del Sprint 4 siguen activos.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.outline,
@@ -343,6 +351,35 @@ class _PairingActionsCard extends StatelessWidget {
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ScanCard extends StatelessWidget {
+  const _ScanCard({required this.onOpen});
+
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        leading: Icon(
+          Icons.document_scanner_outlined,
+          color: theme.colorScheme.primary,
+        ),
+        title: const Text('Escanear documento'),
+        subtitle: const Text(
+          'Detecta los bordes, corrige la perspectiva y permite varias páginas '
+          'con filtros. No necesita una PC emparejada.',
+        ),
+        trailing: FilledButton.tonal(
+          onPressed: onOpen,
+          child: const Text('Abrir'),
         ),
       ),
     );
